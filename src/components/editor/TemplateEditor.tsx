@@ -30,14 +30,34 @@ function HighlightedText({ text }: { text: string }) {
   return <p className="whitespace-pre-wrap leading-relaxed">{parts}</p>;
 }
 
-const EXAMPLE_TEMPLATE = `Prezado(a) {{NOME_CONSUMIDOR}},
+const PLACEHOLDER_TEMPLATE = `RESUMO EXECUTIVO DO CASO – PROCON
+Protocolo: {{PROTOCOLO}}
+Prazo: {{PRAZO}}
+Nome: {{NOME_CONSUMIDOR}}
+ID do Pedido: {{ID_PEDIDO}}
+Nome Estabelecimento: {{NOME_ESTABELECIMENTO}}
+Motivo: {{MOTIVO}}
 
-Recebemos sua manifestação protocolada em {{DATA_PROTOCOLO}} referente ao pedido {{NUMERO_PEDIDO}}.
+CRONOLOGIA E HISTÓRICO DE TRATATIVAS
 
-Após análise, {{RESPOSTA_ANALISE}}.
+1. Fato Gerador e Atendimento Inicial
 
-Atenciosamente,
-Equipe Keeta`;
+O Problema:
+{{RESUMO_RECLAMACAO}}
+
+Análise:
+{{ANALISE_JURIDICA}}
+
+2. Tratativa e Resolução
+
+Atendimento Suporte:
+{{ATENDIMENTO_SUPORTE}}
+
+Abertura no Reclame Aqui:
+{{DATA_ABERTURA_RA}}
+
+STATUS ATUAL
+{{STATUS_ATUAL}}`;
 
 export default function TemplateEditor({
   extracted,
@@ -48,7 +68,7 @@ export default function TemplateEditor({
   templateText?: string;
   onClose: () => void;
 }) {
-  const [edited, setEdited] = useState(templateText || EXAMPLE_TEMPLATE);
+  const [edited, setEdited] = useState(templateText || PLACEHOLDER_TEMPLATE);
   const interpolated = useMemo(() => interpolate(edited, extracted), [edited, extracted]);
   const variables = useMemo(
     () => Array.from(new Set(edited.match(/\{\{\s*[A-Z0-9_]+\s*\}\}/g) ?? [])),
@@ -108,10 +128,10 @@ export default function TemplateEditor({
               Template
             </h3>
             <button
-              onClick={() => setEdited(EXAMPLE_TEMPLATE)}
+              onClick={() => setEdited(PLACEHOLDER_TEMPLATE)}
               className="text-xs font-semibold text-zinc-500 hover:text-keeta-teal"
             >
-              restaurar exemplo
+              restaurar padrão Procon
             </button>
           </div>
           <textarea
