@@ -11,6 +11,32 @@ export type HistoricoEntry = {
   templateGerado: string;
   conteudoHash: string;
   criadoEm: string;
+  /** Snapshot do Formulário de CRM (Procon) — dados IA + campos manuais. */
+  dadosCrm?: CrmSnapshot | null;
+};
+
+/** Prazo de defesa conforme calculado pelo servidor. */
+export type PrazoDefesaSnapshot = {
+  dataAberturaISO: string;
+  deadlineFinalISO: string;
+  diasRestantes: number;
+};
+
+/** Dados estruturados extraídos pela IA para o CRM. */
+export type DadosIAForm = {
+  cipProcon: string;
+  numeroPedido: string;
+  mcdonalds: boolean;
+  motivoClassificado: string;
+};
+
+/** Estado persistido do formulário de CRM de um caso. */
+export type CrmSnapshot = {
+  prazoDefesa?: PrazoDefesaSnapshot | null;
+  dadosIA?: DadosIAForm;
+  /** Campos do formulário (IA + manuais) no momento do salvamento. */
+  campos?: Record<string, string>;
+  atualizadoEm?: string;
 };
 
 export type Template = {

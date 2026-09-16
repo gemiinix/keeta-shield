@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { HistoricoEntry } from '@/lib/types';
+import type { HistoricoEntry, CrmSnapshot } from '@/lib/types';
 import { interpolate } from '@/components/editor/TemplateEditor';
 
 type FiltroTipo = 'todos' | 'procon' | 'subsidio';
@@ -10,7 +10,25 @@ export default function HistoricoPage({
   onOpenAnalysis,
   onNavigateToEditor,
 }: {
-  onOpenAnalysis: (r: { extracted: Record<string, string>; templateText: string }) => void;
+  onOpenAnalysis: (r: {
+    extracted: Record<string, string>;
+    templateText: string;
+    casoId?: number | null;
+    crm?: {
+      dadosIA: {
+        cipProcon: string;
+        numeroPedido: string;
+        mcdonalds: boolean;
+        motivoClassificado: string;
+      };
+      prazoDefesa: {
+        dataAberturaISO: string;
+        deadlineFinalISO: string;
+        diasRestantes: number;
+      } | null;
+      snapshot?: CrmSnapshot | null;
+    };
+  }) => void;
   onNavigateToEditor: () => void;
 }) {
   const [entries, setEntries] = useState<HistoricoEntry[]>([]);
@@ -315,6 +333,21 @@ function ExpandableRow({
   onOpenAnalysis: (r: {
     extracted: Record<string, string>;
     templateText: string;
+    casoId?: number | null;
+    crm?: {
+      dadosIA: {
+        cipProcon: string;
+        numeroPedido: string;
+        mcdonalds: boolean;
+        motivoClassificado: string;
+      };
+      prazoDefesa: {
+        dataAberturaISO: string;
+        deadlineFinalISO: string;
+        diasRestantes: number;
+      } | null;
+      snapshot?: CrmSnapshot | null;
+    };
   }) => void;
   onNavigateToEditor: () => void;
   onToggleSelecionado: () => void;
@@ -328,6 +361,21 @@ function ExpandableRow({
         CLAUSULA_APLICAVEL: e.clausula,
       },
       templateText: e.templateGerado,
+      casoId: e.id,
+      crm:
+        e.tipo === 'procon'
+          ? {
+              dadosIA:
+                e.dadosCrm?.dadosIA ?? {
+                  cipProcon: '',
+                  numeroPedido: '',
+                  mcdonalds: false,
+                  motivoClassificado: '',
+                },
+              prazoDefesa: e.dadosCrm?.prazoDefesa ?? null,
+              snapshot: e.dadosCrm ?? null,
+            }
+          : undefined,
     });
     onNavigateToEditor();
   };

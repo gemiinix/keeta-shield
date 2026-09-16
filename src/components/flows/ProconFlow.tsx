@@ -18,6 +18,7 @@ export default function ProconFlow({
   onAnalysisComplete: (result: {
     extracted: Record<string, string>;
     templateText: string;
+    casoId?: number | null;
     crm?: {
       dadosIA: {
         cipProcon: string;
@@ -84,6 +85,7 @@ export default function ProconFlow({
         resumoExecutivo: string;
         clausulaAplicavel: string;
         templateSugerido: string;
+        casoId?: number;
         prazoDefesa?: {
           dataAberturaISO: string;
           deadlineFinalISO: string;
@@ -119,6 +121,7 @@ export default function ProconFlow({
       onAnalysisComplete({
         extracted,
         templateText: data.templateSugerido,
+        casoId: data.casoId ?? null,
         crm:
           data.dadosFormulario || data.prazoDefesa
             ? {

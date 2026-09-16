@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { MOTIVOS_PROCON } from '@/constants/motivos';
 import { calculateKeetaBusinessDeadline, isoParaBR } from '@/lib/prazo';
+import type { CrmSnapshot } from '@/lib/types';
 
 /** Dados extraídos pela IA que chegam ao formulário. */
 export type CrmDadosIA = {
@@ -20,6 +21,10 @@ type Props = {
     diasRestantes: number;
   } | null;
   onOpenTemplate: () => void;
+  /** Snapshot salvo (reabrindo do histórico) — repõe os campos preenchidos. */
+  snapshot?: CrmSnapshot | null;
+  /** ID do caso no histórico — habilita salvar/atualizar o formulário. */
+  casoId?: number | null;
 };
 
 const SIM_NAO = ['Sim', 'Não'] as const;
@@ -77,36 +82,45 @@ function ActionButton({
   );
 }
 
-export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate }: Props) {
-  // ── Campos pré-preenchidos pela IA (editáveis) ──
-  const [responsavel] = useState('Anderson Figueredo');
-  const [motivo, setMotivo] = useState(dadosIA.motivoClassificado || '');
+export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot, casoId }: Props) {
+  // ── Campos pré-preenchidos pela IA (editáveis; snapshot repõe os salvos) ──
+  const saved = snapshot?.campos ?? {};
+  const [salvando, setSalvando] = useState(false);
+  const [msgSalvo, setMsgSalvo] = useState<string | null>(null);
+  const [responsavel] = useState(saved.responsavel ?? 'Anderson Figueredo');
+  const [motivo, setMotivo] = useState(saved.motivo ?? dadosIA.motivoClassificado ?? '');
   const [mcdonalds, setMcdonalds] = useState<'' | 'Sim' | 'Não'>(
-    dadosIA.mcdonalds ? 'Sim' : ''
+    ((saved.mcdonalds as 'Sim' | 'Não') ?? (dadosIA.mcdonalds ? 'Sim' : 'Não')) as '' | 'Sim' | 'Não'
   );
   const [mcdonaldsTocado, setMcdonaldsTocado] = useState(false);
   const mcdonaldsValor = mcdonaldsTocado
     ? mcdonalds
-    : dadosIA.mcdonalds
-      ? ('Sim' as const)
-      : ('Não' as const);
+    : ((saved.mcdonalds as 'Sim' | 'Não') ?? (dadosIA.mcdonalds ? 'Sim' : 'Não'));
 
-  // ── Campos manuais ──
-  const [tt, setTT] = useState('');
-  const [solicitacao, setSolicitacao] = useState('');
-  const [idRa, setIdRa] = useState('');
-  const [idProcon, setIdProcon] = useState('');
-  const [flagKsProcon, setFlagKsProcon] = useState<'' | 'Sim' | 'Não'>('');
-  const [idT1, setIdT1] = useState('');
-  const [idT2, setIdT2] = useState('');
-  const [t1OuT2, setT1OuT2] = useState<'' | 'T1' | 'T2'>('');
-  const [dataEncerramento, setDataEncerramento] = useState('');
-  const [status, setStatus] = useState<'' | (typeof STATUS_OPCOES)[number]>('');
-  const [virouProcesso, setVirouProcesso] = useState<'' | 'Sim' | 'Não'>('');
-  const [statusProcAdm, setStatusProcAdm] = useState<'' | (typeof STATUS_OPCOES)[number]>('');
-  const [reembolso, setReembolso] = useState('');
-  const [compensacao, setCompensacao] = useState('');
-  const [comentarios, setComentarios] = useState('');
+  // ── Campos manuais (snapshot repõe os salvos) ──
+  const [tt, setTT] = useState(saved.tt ?? '');
+  const [solicitacao, setSolicitacao] = useState(saved.solicitacao ?? '');
+  const [idRa, setIdRa] = useState(saved.idRa ?? '');
+  const [idProcon, setIdProcon] = useState(saved.idProcon ?? '');
+  const [flagKsProcon, setFlagKsProcon] = useState<'' | 'Sim' | 'Não'>(
+    (saved.flagKsProcon as '' | 'Sim' | 'Não') ?? ''
+  );
+  const [idT1, setIdT1] = useState(saved.idT1 ?? '');
+  const [idT2, setIdT2] = useState(saved.idT2 ?? '');
+  const [t1OuT2, setT1OuT2] = useState<'' | 'T1' | 'T2'>((saved.t1OuT2 as '' | 'T1' | 'T2') ?? '');
+  const [dataEncerramento, setDataEncerramento] = useState(saved.dataEncerramento ?? '');
+  const [status, setStatus] = useState<'' | (typeof STATUS_OPCOES)[number]>(
+    (saved.status as '' | (typeof STATUS_OPCOES)[number]) ?? ''
+  );
+  const [virouProcesso, setVirouProcesso] = useState<'' | 'Sim' | 'Não'>(
+    (saved.virouProcesso as '' | 'Sim' | 'Não') ?? ''
+  );
+  const [statusProcAdm, setStatusProcAdm] = useState<'' | (typeof STATUS_OPCOES)[number]>(
+    (saved.statusProcAdm as '' | (typeof STATUS_OPCOES)[number]) ?? ''
+  );
+  const [reembolso, setReembolso] = useState(saved.reembolso ?? '');
+  const [compensacao, setCompensacao] = useState(saved.compensacao ?? '');
+  const [comentarios, setComentarios] = useState(saved.comentarios ?? '');
 
   // ── Prazo de processo administrativo: 10 dias úteis a partir de HOJE ──
   // Mesma regra utilitária do backend (prazo.ts) — cálculo no cliente.
@@ -139,6 +153,58 @@ export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate }: Props)
     setReembolso('');
     setCompensacao('');
     setComentarios('');
+  };
+
+  const salvarFormulario = async () => {
+    if (!casoId || salvando) return;
+    setSalvando(true);
+    setMsgSalvo(null);
+    try {
+      const snapshot: CrmSnapshot = {
+        prazoDefesa: prazoDefesa ?? null,
+        dadosIA,
+        campos: {
+          responsavel,
+          motivo,
+          mcdonalds: mcdonaldsValor,
+          tt,
+          solicitacao,
+          idRa,
+          idProcon,
+          flagKsProcon,
+          idT1,
+          idT2,
+          t1OuT2,
+          dataEncerramento,
+          status,
+          virouProcesso,
+          statusProcAdm,
+          reembolso,
+          compensacao,
+          comentarios,
+        },
+        atualizadoEm: new Date().toISOString(),
+      };
+      const res = await fetch('/api/historico', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: casoId, snapshot }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? 'Falha ao salvar formulário.');
+      }
+      setMsgSalvo(
+        `Formulário salvo às ${new Date().toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit',
+        })} — reabra este caso pelo Histórico quando quiser atualizar.`
+      );
+    } catch (err) {
+      setMsgSalvo(err instanceof Error ? err.message : 'Erro inesperado ao salvar.');
+    } finally {
+      setSalvando(false);
+    }
   };
 
   const prazoStatus =
@@ -441,13 +507,30 @@ export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate }: Props)
         </div>
 
         <div className="flex flex-wrap items-center gap-3 md:col-span-2 xl:col-span-3">
-          <ActionButton onClick={onOpenTemplate}>
+          {casoId ? (
+            <ActionButton onClick={salvarFormulario}>
+              {salvando ? 'Salvando…' : 'Salvar no histórico'}
+            </ActionButton>
+          ) : null}
+          <ActionButton variant="ghost" onClick={onOpenTemplate}>
             Abrir minuta no editor
           </ActionButton>
           <ActionButton variant="ghost" onClick={limparCamposManuais}>
             Limpar campos manuais
           </ActionButton>
         </div>
+        {msgSalvo && (
+          <p
+            role="status"
+            className={`mt-1 text-xs font-semibold md:col-span-2 xl:col-span-3 ${
+              msgSalvo.startsWith('Formulário salvo')
+                ? 'text-keeta-teal-dark'
+                : 'text-danger-red'
+            }`}
+          >
+            {msgSalvo}
+          </p>
+        )}
       </form>
     </div>
   );

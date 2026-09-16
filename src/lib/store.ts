@@ -8,7 +8,7 @@
  * Tabelas: historico (análises + cache), templates (padrões de resposta),
  * termos (T&C da Keeta extraídos de PDFs).
  */
-import type { HistoricoEntry, Template, Termo } from './types';
+import type { HistoricoEntry, Template, Termo, CrmSnapshot } from './types';
 import type { Sql } from 'postgres';
 
 interface Store {
@@ -22,6 +22,8 @@ interface Store {
   deleteHistorico(id: number): Promise<void>;
   deleteHistoricoBulk(ids: number[]): Promise<number>;
   clearHistorico(): Promise<number>;
+  saveCrmSnapshot(id: number, snapshot: CrmSnapshot): Promise<void>;
+  getCrmSnapshot(id: number): Promise<CrmSnapshot | null>;
 
   listTemplates(): Promise<Template[]>;
   getTemplatePadrao(): Promise<Template | null>;
@@ -65,6 +67,12 @@ export const store = {
   },
   async clearHistorico() {
     return (await getStore()).clearHistorico();
+  },
+  async saveCrmSnapshot(id: number, snapshot: CrmSnapshot) {
+    return (await getStore()).saveCrmSnapshot(id, snapshot);
+  },
+  async getCrmSnapshot(id: number) {
+    return (await getStore()).getCrmSnapshot(id);
   },
   async listTemplates() {
     return (await getStore()).listTemplates();
@@ -119,6 +127,12 @@ function createPostgresStore(): Store {
           conteudo_hash text not null,
           criado_em timestamptz not null default now()
         )`;
+      // Coluna nova do snapshot CRM — idempotente (ignora erro se já existe).
+      try {
+        await sql`alter table historico add column if not exists dados_crm text`;
+      } catch {
+        /* versões antigas de Postgres sem "if not exists" em add column */
+      }
       await sql`
         create table if not exists templates (
           id serial primary key,
@@ -141,7 +155,7 @@ function createPostgresStore(): Store {
     async listHistorico(limit = 100) {
       const sql = await getSql();
       const rows = await sql`
-        select id, tipo, origem, resumo, clausula, template_gerado, conteudo_hash, criado_em
+        select id, tipo, origem, resumo, clausula, template_gerado, conteudo_hash, criado_em, dados_crm
         from historico order by id desc limit ${limit}`;
       return rows.map(mapHistorico);
     },
@@ -149,7 +163,7 @@ function createPostgresStore(): Store {
     async getHistoricoByHash(hash: string) {
       const sql = await getSql();
       const rows = await sql`
-        select id, tipo, origem, resumo, clausula, template_gerado, conteudo_hash, criado_em
+        select id, tipo, origem, resumo, clausula, template_gerado, conteudo_hash, criado_em, dados_crm
         from historico where conteudo_hash = ${hash} order by id desc limit 1`;
       return rows[0] ? mapHistorico(rows[0]) : null;
     },
@@ -180,6 +194,23 @@ function createPostgresStore(): Store {
       const sql = await getSql();
       const rows = await sql`delete from historico returning id`;
       return rows.length;
+    },
+
+    async saveCrmSnapshot(id: number, snapshot: CrmSnapshot) {
+      const sql = await getSql();
+      await sql`update historico set dados_crm = ${JSON.stringify(snapshot)} where id = ${id}`;
+    },
+
+    async getCrmSnapshot(id: number) {
+      const sql = await getSql();
+      const rows = await sql`select dados_crm from historico where id = ${id}`;
+      const raw = rows[0]?.dados_crm;
+      if (!raw) return null;
+      try {
+        return JSON.parse(String(raw)) as CrmSnapshot;
+      } catch {
+        return null;
+      }
     },
 
     async listTemplates() {
@@ -249,6 +280,14 @@ function createPostgresStore(): Store {
 /* mappers snake_case → camelCase */
 type AnyRow = Record<string, unknown>;
 function mapHistorico(r: AnyRow): HistoricoEntry {
+  let dadosCrm: CrmSnapshot | null = null;
+  if (r.dados_crm) {
+    try {
+      dadosCrm = JSON.parse(String(r.dados_crm)) as CrmSnapshot;
+    } catch {
+      dadosCrm = null;
+    }
+  }
   return {
     id: Number(r.id),
     tipo: r.tipo as HistoricoEntry['tipo'],
@@ -258,6 +297,7 @@ function mapHistorico(r: AnyRow): HistoricoEntry {
     templateGerado: String(r.template_gerado ?? ''),
     conteudoHash: String(r.conteudo_hash ?? ''),
     criadoEm: new Date(r.criado_em as string).toISOString(),
+    dadosCrm,
   };
 }
 function mapTemplate(r: AnyRow): Template {
@@ -318,6 +358,13 @@ function createMemoryStore(): Store {
       const n = historico.length;
       historico.length = 0;
       return n;
+    },
+    async saveCrmSnapshot(id: number, snapshot: CrmSnapshot) {
+      const h = historico.find((x) => x.id === id);
+      if (h) h.dadosCrm = snapshot;
+    },
+    async getCrmSnapshot(id: number) {
+      return historico.find((x) => x.id === id)?.dadosCrm ?? null;
     },
     async listTemplates() {
       return [...templates].reverse();

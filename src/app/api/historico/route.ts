@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { store } from '@/lib/store';
+import type { CrmSnapshot } from '@/lib/types';
 
 /** GET /api/historico — lista as análises recentes (mais novas primeiro). */
 export async function GET() {
@@ -9,6 +10,25 @@ export async function GET() {
   } catch (err) {
     console.error('[historico:list]', err);
     return NextResponse.json({ error: 'Falha ao listar histórico.' }, { status: 500 });
+  }
+}
+
+/**
+ * PUT /api/historico — salva/atualiza o snapshot do Formulário de CRM
+ * de um caso. Body: { id: number, snapshot: CrmSnapshot }.
+ */
+export async function PUT(req: Request) {
+  try {
+    const body = (await req.json()) as { id?: number; snapshot?: CrmSnapshot };
+    const id = Number(body.id);
+    if (!Number.isInteger(id) || id <= 0 || !body.snapshot || typeof body.snapshot !== 'object') {
+      return NextResponse.json({ error: 'Envie { id, snapshot } válidos.' }, { status: 400 });
+    }
+    await store.saveCrmSnapshot(id, body.snapshot);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error('[historico:putCrm]', err);
+    return NextResponse.json({ error: 'Falha ao salvar formulário do caso.' }, { status: 500 });
   }
 }
 

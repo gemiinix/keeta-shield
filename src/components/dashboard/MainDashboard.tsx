@@ -10,12 +10,14 @@ import HistoricoPage from '@/components/pages/HistoricoPage';
 import TemplatesPage from '@/components/pages/TemplatesPage';
 import TermosPage from '@/components/pages/TermosPage';
 import type { NavKey } from '@/app/page';
+import type { CrmSnapshot } from '@/lib/types';
 
 type Tab = 'procon' | 'subsidio';
 
 export type AnalysisResult = {
   extracted: Record<string, string>;
   templateText: string;
+  casoId?: number | null;
   crm?: {
     dadosIA: CrmDadosIA;
     prazoDefesa: {
@@ -23,6 +25,7 @@ export type AnalysisResult = {
       deadlineFinalISO: string;
       diasRestantes: number;
     } | null;
+    snapshot?: CrmSnapshot | null;
   };
 };
 
@@ -91,6 +94,8 @@ export default function MainDashboard({
             <CrmForm
               dadosIA={analysisResult.crm.dadosIA}
               prazoDefesa={analysisResult.crm.prazoDefesa}
+              snapshot={analysisResult.crm.snapshot}
+              casoId={analysisResult.casoId}
               onOpenTemplate={() => setPosAnalise('editor')}
             />
           </div>
@@ -99,6 +104,11 @@ export default function MainDashboard({
             extracted={analysisResult.extracted}
             templateText={analysisResult.templateText}
             onClose={() => setAnalysisResult(null)}
+            onBackToForm={
+              analysisResult.crm
+                ? () => setPosAnalise('crm')
+                : undefined
+            }
           />
         )}
       </main>

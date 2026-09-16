@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { XMarkIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, ArrowDownTrayIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { PrazoBanner, type PrazoStatus } from '@/components/ui/PrazoBadge';
 
 /**
@@ -72,10 +72,13 @@ export default function TemplateEditor({
   extracted,
   templateText,
   onClose,
+  onBackToForm,
 }: {
   extracted: Record<string, string>;
   templateText?: string;
   onClose: () => void;
+  /** Quando presente (caso Procon), exibe botão de retorno ao CRM. */
+  onBackToForm?: () => void;
 }) {
   const [edited, setEdited] = useState(templateText || PLACEHOLDER_TEMPLATE);
 
@@ -113,6 +116,15 @@ export default function TemplateEditor({
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {onBackToForm && (
+            <button
+              onClick={onBackToForm}
+              className="inline-flex items-center gap-2 rounded-lg border border-line bg-white px-4 py-2 text-sm font-semibold text-ink/60 transition-colors duration-150 hover:bg-surface hover:text-ink"
+            >
+              <ArrowLeftIcon className="h-4 w-4" />
+              Voltar ao formulário
+            </button>
+          )}
           <button
             onClick={() => {
               // Exporta a peça interpolada como .txt (download real)

@@ -441,8 +441,9 @@ ${conteudo.slice(0, 30000)}
 
     // Grava no histórico — alimenta o cache (hash) e a página Histórico.
     // Falha ao gravar NUNCA derruba a análise (best-effort).
+    let casoId: number | null = null;
     try {
-      await store.saveHistorico({
+      const salvo = await store.saveHistorico({
         tipo: tipo as TipoAnalise,
         origem: req.headers.get('content-type')?.includes('multipart/form-data') ? 'pdf' : 'texto',
         resumo: resumoExecutivo,
@@ -450,6 +451,7 @@ ${conteudo.slice(0, 30000)}
         templateGerado: templateFinal,
         conteudoHash,
       });
+      casoId = salvo.id;
     } catch (dbErr) {
       console.error('[analisar:saveHistorico]', dbErr);
     }
@@ -464,6 +466,7 @@ ${conteudo.slice(0, 30000)}
       resposta.prazoDefesa = prazoDefesa;
     }
     if (dadosForm) resposta.dadosFormulario = dadosForm;
+    if (casoId !== null) resposta.casoId = casoId;
 
     return NextResponse.json(resposta);
   } catch (err) {
