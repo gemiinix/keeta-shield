@@ -3,6 +3,7 @@ import ensureCanvasPolyfills from '@/lib/canvas-polyfill';
 import type { GenerateContentResponse } from '@google/genai';
 import { store } from '@/lib/store';
 import type { TipoAnalise } from '@/lib/types';
+import { calculateKeetaBusinessDeadline, isoParaBR } from '@/lib/prazo';
 
 /**
  * Chama o Gemini com retry automático, cadeia de fallback entre modelos e
@@ -192,13 +193,20 @@ export async function POST(req: NextRequest) {
 - NUNCA invente números de protocolo, nomes, datas, IDs ou valores que não estejam no documento.
 - Nunca inclua texto fora do JSON.`;
 
-    const CONTRATO_JSON = `Você deve devolver EXATAMENTE um objeto JSON válido (sem markdown, sem cercas de código, sem texto fora do JSON) com estas três chaves:
+    const CONTRATO_JSON = `Você deve devolver EXATAMENTE um objeto JSON válido (sem markdown, sem cercas de código, sem texto fora do JSON) com estas chaves:
 
 {
   "resumoExecutivo": "...",
   "clausulaAplicavel": "...",
-  "templateSugerido": "..."
+  "templateSugerido": "...",
+  "dataAbertura": "DD/MM/YYYY"
 }`;
+
+    const PROCON_REGRAS = `### Regras do campo dataAbertura:
+- Procure no cabeçalho a data de abertura, geralmente no formato "Cidade, DD/MM/YYYY" (ex.: "São Paulo, 09/09/2026") — extraia apenas "09/09/2026".
+- Procure também em campos como "Data da Abertura", "Data de Recebimento", "Registrado em", datas de assinatura ou protocolo.
+- Se houver múltiplas datas, use a mais antiga associada à abertura/registro da manifestação.
+- Se NÃO houver data alguma no documento, devolva "" (string vazia). NUNCA invente uma data.`;
 
     const systemPrompt =
       tipo === 'procon'
@@ -208,8 +216,11 @@ Foco de cada campo:
 - "resumoExecutivo": a queixa do consumidor e o pedido principal, em 2-4 frases factuais.
 - "clausulaAplicavel": os T&Cs de uso do app, atrasos de entrega, estornos/reembolsos ou responsabilidade do restaurante/estabelecimento que amparam a posição da Keeta, com fundamento do CDC quando cabível.
 - "templateSugerido": minuta de defesa Procon, seguindo EXATAMENTE o padrão abaixo.
+- "dataAbertura": a data de abertura da manifestação (regras abaixo).
 
 ${CONTRATO_JSON}
+
+${PROCON_REGRAS}
 
 ### PADRÃO OBRIGATÓRIO DO templateSugerido (mantenha as seções e títulos na ordem exata):
 
@@ -242,11 +253,19 @@ Abertura no Reclame Aqui:
 STATUS ATUAL
 <status atual do caso, ex.: Aguardando resposta da empresa em prazo legal>
 ${REGRAS_SAIDA}`
-        : `Você é um especialista paralegal da Keeta Delivery Brasil. O usuário vai te enviar ofícios ou requisições judiciais e extrajudiciais em "juridiquês" — seu objetivo é TRADUZIR isso para a operação.
+        : `Você é o Motor de Extração de Dados Rigoroso do fluxo de Subsídio da Keeta Delivery Brasil. O usuário vai te enviar e-mails, ofícios ou documentos jurídicos em "juridiquês" — seu objetivo NÃO é justificar com T&Cs, e sim atuar como parser rigoroso que traduz o documento num checklist acionável para o time de operação.
+
+Instruções:
+
+1. IDENTIFIQUE A ENTIDADE-ALVO: nome, identificador (CPF/CNPJ/Nº do pedido/ID de entregador) e o status atual desejado (ex.: reativação de cadastro).
+
+2. EXTRAIA OS DADOS REQUISITADOS: identifique rigorosamente TODOS os pontos de dados pedidos individualmente (ex.: histórico de infrações, rendimentos detalhados, motivos de penalidade). Se o ofício usar lista numerada, extraia cada item como item separado do checklist.
+
+3. IDENTIFIJE PRAZOS E AÇÕES CRÍTICAS: procure datas, pedidos legais específicos (liminares, reativações) e pessoas envolvidas.
 
 Foco de cada campo:
-- "resumoExecutivo": descreva claramente QUAIS DADOS o advogado/juiz/órgão quer extrair da operação (ex.: histórico do entregador X, logs de geolocalização, dados cadastrais, registros de pedido), em 2-4 frases.
-- "clausulaAplicavel": os T&Cs de privacidade, LGPD (Lei 13.709/2018) ou intermediação de tecnologia que definem a posição da Keeta perante a requisição — cite cláusulas na letra quando os textos oficiais forem fornecidos.
+- "resumoExecutivo": as informações da entidade-alvo — nome, identificador e status desejado — mais uma síntese do que é pedido, em 2-4 frases.
+- "clausulaAplicavel": o CHECKLIST acionável — lista numerada de TODOS os dados a extrair, prazos/liminares identificados e ações necessárias. Justificação por T&Cs/LGPD fica em UMA única frase breve ao final (não é o foco).
 - "templateSugerido": minuta de resposta jurídica/subsídio, seguindo EXATAMENTE o padrão abaixo.
 
 ${CONTRATO_JSON}
@@ -263,8 +282,16 @@ Objeto: <o que foi requisitado, em 1 frase>
 DADOS SOLICITADOS
 <lista numerada dos dados/documents requisitados, traduzidos do juridiquês>
 
+ENTIDADE-ALVO
+Nome: <nome se constar, senão {{NOME_ENTIDADE}}>
+Identificador: <CPF/CNPJ/pedido/ID se constar, senão {{IDENTIFICADOR}}>
+Status desejado: <ex.: reativação, se aplicável, senão {{STATUS_DESEJADO}}>
+
+PRAZOS E AÇÕES CRÍTICAS
+<datas, liminares e responsáveis identificados; senão {{PRAZOS_ACOES}}>
+
 ANÁLISE E FUNDAMENTOS
-<parecer com os T&C de privacidade, LGPD e intermediação de tecnologia aplicáveis à requisição, indicando o que a operação consegue fornecer e eventuais ressalvas legais>
+<uma frase breve com o fundamento legal/T&C aplicável — NÃO é o foco>
 
 STATUS ATUAL
 <status atual, ex.: Aguardando compilação dos dados pela operação>
@@ -294,13 +321,35 @@ ${conteudo.slice(0, 30000)}
       parsed = JSON.parse(match[0]);
     }
 
-    const { resumoExecutivo, clausulaAplicavel, templateSugerido } = parsed as {
+    const { resumoExecutivo, clausulaAplicavel, templateSugerido, dataAbertura } = parsed as {
       resumoExecutivo?: string;
       clausulaAplicavel?: string;
       templateSugerido?: string;
+      dataAbertura?: string;
     };
 
-    if (!resumoExecutivo || !clausulaAplicavel || !templateSugerido) {
+    // ── Prazo de defesa: cálculo determinístico no servidor ──
+    // 10 dias corridos da abertura; caindo em fim de semana/feriado nacional,
+    // posterga p/ o próximo dia útil. Nunca delegamos aritmética de datas ao LLM.
+    let prazoDefesa: ReturnType<typeof calculateKeetaBusinessDeadline> | null = null;
+    if (tipo === 'procon' && dataAbertura) {
+      try {
+        prazoDefesa = calculateKeetaBusinessDeadline(dataAbertura);
+      } catch (pErr) {
+        console.error('[analisar:prazo]', pErr);
+      }
+    }
+
+    // Preenche o campo Prazo do template com a data final calculada
+    let templateFinal = templateSugerido ?? '';
+    if (prazoDefesa && templateSugerido) {
+      templateFinal = templateSugerido.replace(
+        /^(Prazo:\s*)\{\{PRAZO\}\}$/m,
+        `$1${isoParaBR(prazoDefesa.deadlineFinalISO)} (10 dias corridos da abertura, ajustado p/ dia útil)`
+      );
+    }
+
+    if (!resumoExecutivo || !clausulaAplicavel || !templateFinal) {
       return NextResponse.json(
         { error: 'Resposta do modelo incompleta — faltam campos obrigatórios.' },
         { status: 502 }
@@ -315,18 +364,24 @@ ${conteudo.slice(0, 30000)}
         origem: req.headers.get('content-type')?.includes('multipart/form-data') ? 'pdf' : 'texto',
         resumo: resumoExecutivo,
         clausula: clausulaAplicavel,
-        templateGerado: templateSugerido,
+        templateGerado: templateFinal,
         conteudoHash,
       });
     } catch (dbErr) {
       console.error('[analisar:saveHistorico]', dbErr);
     }
 
-    return NextResponse.json({
+    const resposta: Record<string, unknown> = {
       resumoExecutivo,
       clausulaAplicavel,
-      templateSugerido,
-    });
+      templateSugerido: templateFinal,
+    };
+    if (prazoDefesa) {
+      resposta.dataAbertura = dataAbertura;
+      resposta.prazoDefesa = prazoDefesa;
+    }
+
+    return NextResponse.json(resposta);
   } catch (err) {
     console.error('[analisar]', err);
 
