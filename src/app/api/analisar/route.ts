@@ -3,10 +3,12 @@ import ensureCanvasPolyfills from '@/lib/canvas-polyfill';
 import type { GenerateContentParameters, GenerateContentResponse } from '@google/genai';
 
 /**
- * Chama o Gemini com retry automático (máx. 3 tentativas, backoff exponencial).
- * Picos de demanda (429/503) são temporários — a espera progressiva resolve
- * sem exigir nova ação do usuário.
+ * Chama o Gemini com retry automático (máx. 3 tentativas, backoff exponencial)
+ * e cadeia de fallback entre modelos — picos de demanda (429/503) são
+ * temporários e o alias -latest costuma ter fila menor.
  */
+const MODEL_CHAIN = ['gemini-3.6-flash', 'gemini-flash-latest'] as const;
+
 async function generateWithRetry(
   ai: { models: { generateContent: (args: GenerateContentParameters) => Promise<GenerateContentResponse> } },
   userPrompt: string,
@@ -15,25 +17,28 @@ async function generateWithRetry(
   const MAX_ATTEMPTS = 3;
   let lastError: unknown;
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    try {
-      return await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents: userPrompt,
-        config: {
-          systemInstruction: systemPrompt,
-          responseMimeType: 'application/json',
-          temperature: 0.2,
-        },
-      });
-    } catch (err) {
-      lastError = err;
-      const msg = err instanceof Error ? err.message : String(err);
-      const transient = /high demand|overloaded|429|503|RESOURCE_EXHAUSTED|UNAVAILABLE/i.test(msg);
-      if (!transient || attempt === MAX_ATTEMPTS) throw err;
-      // 2s → 4s (com jitter)
-      const waitMs = 2000 * attempt + Math.random() * 1000;
-      await new Promise((r) => setTimeout(r, waitMs));
+  for (const model of MODEL_CHAIN) {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        return await ai.models.generateContent({
+          model,
+          contents: userPrompt,
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: 'application/json',
+            temperature: 0.2,
+          },
+        });
+      } catch (err) {
+        lastError = err;
+        const msg = err instanceof Error ? err.message : String(err);
+        const transient = /high demand|overloaded|429|503|RESOURCE_EXHAUSTED|UNAVAILABLE/i.test(msg);
+        if (!transient) break; // erro não transitório: pula para o próximo modelo da cadeia
+        if (attempt === MAX_ATTEMPTS) break; // esgotou tentativas: próximo modelo
+        // 2s → 4s (com jitter)
+        const waitMs = 2000 * attempt + Math.random() * 1000;
+        await new Promise((r) => setTimeout(r, waitMs));
+      }
     }
   }
   throw lastError;
