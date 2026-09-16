@@ -2,27 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===== Keeta Shield — estilos globais ===== */
+/* ===== Keeta Shield — tema claro "Operação Viva" ===== */
 
 ::selection {
-  background-color: rgba(25, 179, 148, 0.4); /* keeta-teal */
+  background-color: rgba(25, 179, 148, 0.25); /* keeta-teal */
 }
 
-/* Scrollbar discreta no tema escuro */
+/* Scrollbar discreta no tema claro */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #3f3f46 transparent; /* zinc-700 */
+  scrollbar-color: #cbd5d1 transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background-color: #3f3f46;
+  background-color: #cbd5d1;
   border-radius: 9999px;
 }
 
 /* Token de variável interpolada no editor de templates */
 .template-variable {
-  @apply rounded bg-keeta-yellow/15 px-1 py-0.5 font-mono text-[0.85em] text-keeta-yellow-dark;
+  @apply rounded bg-keeta-yellow/30 px-1 py-0.5 font-mono text-[0.85em] text-ink;
+}
+
+/* Movimento: transições discretas; entrada suave só nos blocos principais */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Foco visível e consistente (WCAG) */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid #19b394; /* keeta-teal */
+  outline-offset: 2px;
 }

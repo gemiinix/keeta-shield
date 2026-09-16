@@ -1,11 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { Bars3Icon } from '@heroicons/react/24/outline';
 import ProconFlow from '@/components/flows/ProconFlow';
 import SubsidioFlow from '@/components/flows/SubsidioFlow';
 import TemplateEditor from '@/components/editor/TemplateEditor';
 import HistoricoPage from '@/components/pages/HistoricoPage';
 import TemplatesPage from '@/components/pages/TemplatesPage';
+import TermosPage from '@/components/pages/TermosPage';
 import type { NavKey } from '@/app/page';
 
 type Tab = 'procon' | 'subsidio';
@@ -18,15 +20,19 @@ export type AnalysisResult = {
 const PAGE_TITLES: Record<NavKey, { title: string; subtitle: string }> = {
   'nova-analise': {
     title: 'Nova Análise',
-    subtitle: 'Selecione o fluxo de trabalho e submeta a requisição para análise.',
+    subtitle: 'Central de triagem — selecione o fluxo e submeta a requisição.',
   },
   historico: {
     title: 'Histórico',
     subtitle: 'Análises registradas — reabra qualquer uma no editor.',
   },
   templates: {
-    title: 'Gerir Templates',
-    subtitle: 'Templates de resposta e Termos e Condições da Keeta.',
+    title: 'Templates',
+    subtitle: 'Minutas de resposta reutilizáveis para novos casos.',
+  },
+  termos: {
+    title: 'Termos',
+    subtitle: 'PDFs oficiais de T&C que alimentam as análises.',
   },
 };
 
@@ -42,11 +48,11 @@ export default function MainDashboard({
 
   // Fluxo de processamento concluído → exibe o TemplateEditor,
   // MAS apenas enquanto a aba Nova Análise estiver ativa.
-  // Navegar para Histórico/Templates funciona normalmente; voltar
+  // Navegar para Histórico/Templates/Termos funciona normalmente; voltar
   // para Nova Análise retoma o editor exatamente onde estava.
   if (analysisResult && activeNav === 'nova-analise') {
     return (
-      <main className="flex-1 overflow-hidden bg-zinc-950">
+      <main className="flex h-full min-w-0 flex-1 overflow-hidden bg-white">
         <TemplateEditor
           extracted={analysisResult.extracted}
           templateText={analysisResult.templateText}
@@ -59,51 +65,155 @@ export default function MainDashboard({
   const { title, subtitle } = PAGE_TITLES[activeNav];
 
   return (
-    <main className="flex-1 overflow-y-auto bg-zinc-950 p-8">
-      {/* Cabeçalho */}
-      <header className="animate-fade-in-up">
-        <h1 className="text-2xl font-bold text-zinc-100">{title}</h1>
-        <p className="mt-1 text-sm text-zinc-500">{subtitle}</p>
+    <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-white">
+      {/* Cabeçalho fixo de 72px */}
+      <header className="flex h-[72px] shrink-0 items-center border-b border-line bg-white px-5 pl-16 lg:px-10 lg:pl-10">
+        <div className="animate-fade-in-up min-w-0">
+          <h1 className="font-display text-lg font-bold uppercase tracking-tight text-ink lg:text-xl">
+            {title}
+          </h1>
+          <p className="mt-0.5 truncate text-sm font-medium text-keeta-teal-dark">
+            {subtitle}
+          </p>
+        </div>
+        {/* Infos secundárias discretas */}
+        <div className="ml-auto hidden shrink-0 items-center gap-3 text-xs text-ink/45 md:flex">
+          <span>Procon · Subsídio</span>
+          <span aria-hidden className="h-1 w-1 rounded-full bg-keeta-yellow" />
+          <span>Operação Viva</span>
+        </div>
       </header>
 
-      {activeNav === 'historico' && <HistoricoPage onOpenAnalysis={setAnalysisResult} />}
+      {/* Área de trabalho */}
+      <div className="min-w-0 flex-1 overflow-y-auto px-5 py-8 pl-16 lg:px-10 lg:pl-10">
+        {activeNav === 'historico' && <HistoricoPage onOpenAnalysis={setAnalysisResult} />}
 
-      {activeNav === 'templates' && <TemplatesPage />}
+        {activeNav === 'templates' && <TemplatesPage />}
 
-      {activeNav === 'nova-analise' && (
-        <>
-          {/* Abas de fluxo */}
-          <div className="mt-6 inline-flex rounded-xl border border-zinc-800 bg-zinc-900 p-1">
-            {(
-              [
-                { key: 'procon', label: 'Procon' },
-                { key: 'subsidio', label: 'Subsídio' },
-              ] as const
-            ).map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setActiveTab(key)}
-                className={`rounded-lg px-6 py-2 text-sm font-semibold transition-all ${
-                  activeTab === key
-                    ? 'bg-keeta-teal text-zinc-950 shadow-glow-teal'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+        {activeNav === 'termos' && <TermosPage />}
+
+        {activeNav === 'nova-analise' && (
+          <div className="mx-auto max-w-6xl">
+            {/* Seletores grandes de fluxo */}
+            <div
+              className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+              role="tablist"
+              aria-label="Fluxo de trabalho"
+            >
+              {(
+                [
+                  { key: 'procon', label: 'Fluxo 01 — Procon', hint: 'PDFs de atendimento' },
+                  {
+                    key: 'subsidio',
+                    label: 'Fluxo 02 — Subsídio',
+                    hint: 'Ofício colado como texto',
+                  },
+                ] as const
+              ).map(({ key, label, hint }) => {
+                const isActive = activeTab === key;
+                return (
+                  <button
+                    key={key}
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setActiveTab(key)}
+                    className={`rounded-lg border px-5 py-4 text-left transition-colors duration-150 ${
+                      isActive
+                        ? 'border-2 border-ink bg-white shadow-sm'
+                        : 'border-line bg-surface hover:border-ink/30'
+                    }`}
+                  >
+                    <span className="block text-sm font-bold text-ink">{label}</span>
+                    <span className="mt-0.5 block text-xs font-medium text-ink/50">
+                      {hint}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Fluxo ativo + coluna lateral de contexto */}
+            <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_300px]">
+              <section key={activeTab} className="animate-fade-in-up min-w-0">
+                {activeTab === 'procon' ? (
+                  <ProconFlow onAnalysisComplete={setAnalysisResult} />
+                ) : (
+                  <SubsidioFlow onAnalysisComplete={setAnalysisResult} />
+                )}
+              </section>
+
+              {/* Coluna lateral de contexto — empilha abaixo em tablet/celular */}
+              <aside className="animate-fade-in-up border-t border-line pt-6 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
+                <h2 className="font-display text-xs font-bold uppercase tracking-wider text-ink">
+                  Requisitos do fluxo
+                </h2>
+                <ul className="mt-4 space-y-3 text-sm text-ink/70">
+                  <li className="flex gap-2.5">
+                    <span
+                      aria-hidden
+                      className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-keeta-teal"
+                    />
+                    <span>
+                      {activeTab === 'procon'
+                        ? 'PDFs com nome iniciando em atendimento_cip_'
+                        : 'Texto integral do ofício colado no campo'}
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span
+                      aria-hidden
+                      className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-keeta-teal"
+                    />
+                    <span>
+                      {activeTab === 'procon'
+                        ? 'Múltiplos arquivos são combinados em uma única análise'
+                        : 'Mínimo de 20 caracteres para iniciar a análise'}
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span
+                      aria-hidden
+                      className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-keeta-teal"
+                    />
+                    <span>
+                      A IA retorna resumo, cláusula aplicável e minuta pronta
+                    </span>
+                  </li>
+                </ul>
+
+                <hr className="my-6 border-line" />
+
+                <h2 className="font-display text-xs font-bold uppercase tracking-wider text-ink">
+                  Próximos passos
+                </h2>
+                <ol className="mt-4 space-y-3 text-sm text-ink/70">
+                  <li className="flex gap-2.5">
+                    <span
+                      aria-hidden
+                      className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-keeta-yellow"
+                    />
+                    <span>A análise leva de 10 a 30 segundos</span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span
+                      aria-hidden
+                      className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-keeta-yellow"
+                    />
+                    <span>Revise a minuta no editor com variáveis preenchidas</span>
+                  </li>
+                  <li className="flex gap-2.5">
+                    <span
+                      aria-hidden
+                      className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-keeta-yellow"
+                    />
+                    <span>Exporte a peça final em .txt para o time jurídico</span>
+                  </li>
+                </ol>
+              </aside>
+            </div>
           </div>
-
-          {/* Área de fluxo ativo */}
-          <section className="mt-6 animate-fade-in-up">
-            {activeTab === 'procon' ? (
-              <ProconFlow onAnalysisComplete={setAnalysisResult} />
-            ) : (
-              <SubsidioFlow onAnalysisComplete={setAnalysisResult} />
-            )}
-          </section>
-        </>
-      )}
+        )}
+      </div>
     </main>
   );
 }

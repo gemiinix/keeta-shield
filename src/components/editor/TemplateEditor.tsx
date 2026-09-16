@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { XCircleIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { PrazoBanner, type PrazoStatus } from '@/components/ui/PrazoBadge';
 
 /**
  * Interpola {{VARIAVEL}} com os dados extraídos.
@@ -11,6 +12,14 @@ export function interpolate(template: string, data: Record<string, string>): str
   return template.replace(/\{\{\s*([A-Z0-9_]+)\s*\}\}/g, (match, key: string) => {
     return data[key] !== undefined ? data[key] : match;
   });
+}
+
+/** Chaves especiais de prazo transmitidas dentro de `extracted`. */
+export const PRAZO_BADGE_KEY = 'PRAZO_BADGE';
+export const PRAZO_STATUS_KEY = 'PRAZO_STATUS';
+
+function isPrazoStatus(v: string | undefined): v is PrazoStatus {
+  return v === 'vencido' || v === 'critico' || v === 'ok';
 }
 
 /** Destaca visualmente as variáveis {{VARIAVEL}} no texto renderizado. */
@@ -69,20 +78,38 @@ export default function TemplateEditor({
   onClose: () => void;
 }) {
   const [edited, setEdited] = useState(templateText || PLACEHOLDER_TEMPLATE);
-  const interpolated = useMemo(() => interpolate(edited, extracted), [edited, extracted]);
+
+  // Prazo de defesa: chaves especiais viram BANNER no topo — não campos.
+  const prazoText = extracted[PRAZO_BADGE_KEY];
+  const prazoStatusRaw = extracted[PRAZO_STATUS_KEY];
+  const prazoStatus = isPrazoStatus(prazoStatusRaw) ? prazoStatusRaw : null;
+  const prazo =
+    prazoText && prazoStatus ? { text: prazoText, status: prazoStatus } : null;
+
+  // Dados extraídos sem as chaves especiais de prazo.
+  const fields = useMemo(() => {
+    const clone: Record<string, string> = { ...extracted };
+    delete clone[PRAZO_BADGE_KEY];
+    delete clone[PRAZO_STATUS_KEY];
+    return clone;
+  }, [extracted]);
+
+  const interpolated = useMemo(() => interpolate(edited, fields), [edited, fields]);
   const variables = useMemo(
     () => Array.from(new Set(edited.match(/\{\{\s*[A-Z0-9_]+\s*\}\}/g) ?? [])),
     [edited]
   );
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col bg-white">
       {/* Barra superior */}
-      <header className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900 px-6 py-4">
+      <header className="flex h-[72px] shrink-0 items-center justify-between border-b border-line bg-white px-5 pl-16 lg:px-8 lg:pl-8">
         <div>
-          <h2 className="text-lg font-bold text-zinc-100">Editor de Resposta</h2>
-          <p className="text-xs text-zinc-500">
-            {variables.length} variáveis • dados extraídos com IA
+          <h2 className="font-display text-lg font-bold uppercase tracking-tight text-ink">
+            Editor de Resposta
+          </h2>
+          <p className="text-xs font-medium text-keeta-teal-dark">
+            {variables.length} variáveis · dados extraídos com IA
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -100,51 +127,61 @@ export default function TemplateEditor({
               a.remove();
               URL.revokeObjectURL(url);
             }}
-            className="rounded-lg bg-keeta-teal px-4 py-2 text-sm font-bold text-zinc-950 transition-colors hover:bg-keeta-teal-dark"
+            className="inline-flex items-center gap-2 rounded-lg bg-ink px-4 py-2 text-sm font-bold text-white transition-colors duration-150 hover:bg-keeta-teal-dark"
           >
+            <ArrowDownTrayIcon className="h-4 w-4" />
             Exportar Peça
           </button>
           <button
             onClick={onClose}
-            className="text-zinc-500 transition-colors hover:text-zinc-200"
-            title="Fechar e voltar"
+            aria-label="Fechar e voltar"
+            className="rounded p-2 text-ink/50 transition-colors duration-150 hover:bg-surface hover:text-ink"
           >
-            <XCircleIcon className="h-6 w-6" />
+            <XMarkIcon className="h-5 w-5" />
           </button>
         </div>
       </header>
 
-      {/* Tela dividida */}
-      <div className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[320px_1fr]">
+      {/* Banner de prazo de defesa — topo do editor */}
+      {prazo && (
+        <div className="border-b border-line px-5 pl-16 py-4 lg:px-8 lg:pl-8">
+          <PrazoBanner status={prazo.status} text={prazo.text} />
+        </div>
+      )}
+
+      {/* Documento longo: dados + editor + pré-visualização */}
+      <div className="grid flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[320px_1fr] lg:overflow-hidden">
         {/* Esquerda: resumo dos dados extraídos */}
-        <aside className="overflow-y-auto border-r border-zinc-800 bg-zinc-900 p-5">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+        <aside className="overflow-y-auto border-b border-line bg-surface p-5 lg:border-b-0 lg:border-r lg:border-line lg:bg-surface">
+          <h3 className="font-display text-xs font-bold uppercase tracking-wider text-ink/60">
             Dados Extraídos
           </h3>
-          <dl className="mt-4 space-y-3">
-            {Object.entries(extracted).map(([key, value]) => (
-              <div key={key} className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
-                <dt className="font-mono text-[10px] uppercase text-keeta-teal">{key}</dt>
-                <dd className="mt-1 text-sm text-zinc-200">{value || '—'}</dd>
+          <dl className="mt-4 space-y-4">
+            {Object.entries(fields).map(([key, value]) => (
+              <div key={key} className="border-l-2 border-keeta-teal/40 pl-3">
+                <dt className="font-mono text-[10px] font-bold uppercase text-keeta-teal-dark">
+                  {key}
+                </dt>
+                <dd className="mt-1 text-sm leading-relaxed text-ink/80">{value || '—'}</dd>
               </div>
             ))}
-            {Object.keys(extracted).length === 0 && (
-              <p className="rounded-lg border border-dashed border-zinc-700 p-4 text-xs text-zinc-500">
-                Nenhum dado extraído ainda. Após a integração do LLM, os campos aparecem aqui.
+            {Object.keys(fields).length === 0 && (
+              <p className="text-xs leading-relaxed text-ink/50">
+                Nenhum dado extraído para este caso.
               </p>
             )}
           </dl>
         </aside>
 
-        {/* Direita: editor com variáveis interpoladas */}
-        <section className="flex flex-col overflow-hidden p-6">
+        {/* Direita: editor com boa largura de leitura + pré-visualização */}
+        <section className="flex flex-col overflow-hidden p-6 lg:p-8">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-              Template
+            <h3 className="font-display text-xs font-bold uppercase tracking-wider text-ink/60">
+              Minuta
             </h3>
             <button
               onClick={() => setEdited(PLACEHOLDER_TEMPLATE)}
-              className="text-xs font-semibold text-zinc-500 hover:text-keeta-teal"
+              className="text-xs font-semibold text-ink/50 transition-colors duration-150 hover:text-keeta-teal-dark"
             >
               restaurar padrão Procon
             </button>
@@ -152,13 +189,14 @@ export default function TemplateEditor({
           <textarea
             value={edited}
             onChange={(e) => setEdited(e.target.value)}
+            aria-label="Minuta editável"
             spellCheck={false}
-            className="mt-3 h-1/2 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900 p-4 font-mono text-sm leading-relaxed text-zinc-200 focus:outline-none focus:ring-1 focus:ring-keeta-teal"
+            className="mt-3 h-2/5 w-full resize-none rounded-lg border border-line bg-white p-4 font-mono text-sm leading-relaxed text-ink focus:border-ink/40 focus:outline-none"
           />
-          <h3 className="mt-4 text-xs font-bold uppercase tracking-wider text-zinc-500">
+          <h3 className="mt-4 font-display text-xs font-bold uppercase tracking-wider text-ink/60">
             Pré-visualização Interpolada
           </h3>
-          <div className="mt-3 flex-1 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-300">
+          <div className="mt-3 flex-1 overflow-y-auto rounded-lg border border-line bg-surface p-4 text-sm text-ink/85">
             <HighlightedText text={interpolated} />
           </div>
         </section>

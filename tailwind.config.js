@@ -7,28 +7,35 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Identidade Keeta
+        // Paleta "Operação Viva" — tema claro único
+        ink: '#14201D', // texto / grafite
         'keeta-yellow': '#FFD600',
         'keeta-teal': '#19B394',
-        // Tons derivados para hover/estados
-        'keeta-teal-dark': '#14826D',
+        'keeta-teal-dark': '#0F8A73',
         'keeta-yellow-dark': '#D9B400',
+        surface: '#F4F7F6', // superfície suave
+        line: '#E4EAE8', // bordas
+        // Estados semânticos de prazo
+        'danger-red': '#C03526',
+        'danger-bg': '#FBEBE9',
+        'warn-amber': '#9A5B00',
+        'warn-bg': '#FFF4DB',
       },
       fontFamily: {
-        sans: ['var(--font-poppins)', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-manrope)', 'system-ui', 'sans-serif'],
+        display: ['var(--font-sora)', 'system-ui', 'sans-serif'],
       },
-      boxShadow: {
-        'glow-teal': '0 0 24px rgba(25, 179, 148, 0.35)',
-        'glow-yellow': '0 0 24px rgba(255, 214, 0, 0.25)',
+      borderRadius: {
+        DEFAULT: '6px',
       },
       keyframes: {
         'fade-in-up': {
-          '0%': { opacity: '0', transform: 'translateY(12px)' },
+          '0%': { opacity: '0', transform: 'translateY(8px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
       },
       animation: {
-        'fade-in-up': 'fade-in-up 0.4s ease-out',
+        'fade-in-up': 'fade-in-up 0.15s ease-out',
       },
     },
   },

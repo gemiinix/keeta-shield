@@ -2,6 +2,8 @@
 
 import { useCallback, useState } from 'react';
 
+const MIN_CHARS = 20;
+
 export default function SubsidioFlow({
   onAnalysisComplete,
 }: {
@@ -14,7 +16,8 @@ export default function SubsidioFlow({
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canSubmit = requisicao.trim().length >= 20;
+  const charCount = requisicao.trim().length;
+  const canSubmit = charCount >= MIN_CHARS;
 
   const handleAnalysis = useCallback(async () => {
     if (!canSubmit) return;
@@ -50,42 +53,76 @@ export default function SubsidioFlow({
   }, [requisicao, canSubmit, onAnalysisComplete]);
 
   return (
-    <div className="mx-auto max-w-3xl">
-      {/* Textarea amplo */}
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-2 shadow-glow-teal/0 focus-within:shadow-glow-teal transition-shadow">
+    <div>
+      {/* Grande área de texto para colar o ofício */}
+      <div className="overflow-hidden rounded-lg border border-line bg-white focus-within:border-ink/40">
+        <label htmlFor="subsidio-oficio" className="sr-only">
+          Íntegra da requisição de subsídio
+        </label>
         <textarea
+          id="subsidio-oficio"
           value={requisicao}
           onChange={(e) => setRequisicao(e.target.value)}
           placeholder="Cole aqui a íntegra da requisição de subsídio…"
-          rows={14}
-          className="w-full resize-y rounded-xl bg-transparent p-4 text-sm leading-relaxed text-zinc-200 placeholder:text-zinc-600 focus:outline-none"
+          rows={16}
+          disabled={isProcessing}
+          className="w-full resize-y bg-transparent px-5 py-4 text-sm leading-relaxed text-ink placeholder:text-ink/35 focus:outline-none disabled:opacity-60"
         />
-        <div className="flex items-center justify-between px-4 pb-2">
-          <span className="text-[11px] text-zinc-500">
-            {requisicao.trim().length} caracteres
+        <div className="flex items-center justify-between border-t border-line bg-surface px-5 py-2">
+          <span className="text-xs font-semibold text-ink/60">
+            {charCount.toLocaleString('pt-BR')} caracteres
           </span>
-          <span className="text-[11px] text-zinc-500">
-            Mínimo de 20 caracteres para análise
+          <span
+            className={`text-xs font-medium ${
+              canSubmit ? 'text-keeta-teal-dark' : 'text-warn-amber'
+            }`}
+          >
+            {canSubmit
+              ? 'Mínimo atingido — pronto para análise'
+              : `Mínimo de ${MIN_CHARS} caracteres para análise`}
           </span>
         </div>
       </div>
 
       {/* Erro */}
       {error && (
-        <p className="mt-3 rounded-lg border border-red-900/50 bg-red-950/40 p-3 text-xs text-red-300">
+        <p
+          role="alert"
+          className="mt-4 rounded border border-danger-red bg-danger-bg px-4 py-3 text-sm text-danger-red"
+        >
           {error}
         </p>
       )}
 
-      {/* Ação */}
-      <div className="mt-6 flex justify-end">
+      {/* Ação principal */}
+      <div className="mt-6">
         <button
           onClick={handleAnalysis}
           disabled={!canSubmit || isProcessing}
-          className="rounded-xl bg-keeta-teal px-6 py-3 text-sm font-bold text-zinc-950 shadow-glow-teal transition-all hover:bg-keeta-teal-dark disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+          className="rounded-lg bg-ink px-6 py-3 text-sm font-bold text-white transition-colors duration-150 hover:bg-keeta-teal-dark disabled:cursor-not-allowed disabled:opacity-40"
         >
           {isProcessing ? 'Analisando…' : 'Analisar Requisição'}
         </button>
+
+        {/* Loading visível */}
+        {isProcessing && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mt-5 rounded-lg border border-line bg-surface px-4 py-4"
+          >
+            <p className="text-sm font-semibold text-ink">Analisando o ofício…</p>
+            <p className="mt-1 text-xs text-ink/55">
+              A análise leva de 10 a 30 segundos. Não feche esta tela.
+            </p>
+            <div
+              aria-hidden
+              className="mt-3 h-1.5 w-full overflow-hidden rounded bg-line"
+            >
+              <div className="h-full w-1/3 animate-pulse rounded bg-keeta-teal" />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
