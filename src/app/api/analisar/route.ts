@@ -1,43 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ensureCanvasPolyfills from '@/lib/canvas-polyfill';
-import type { GenerateContentParameters, GenerateContentResponse } from '@google/genai';
+import type { GenerateContentResponse } from '@google/genai';
 
 /**
- * Chama o Gemini com retry automático (máx. 3 tentativas, backoff exponencial)
- * e cadeia de fallback entre modelos — picos de demanda (429/503) são
- * temporários e o alias -latest costuma ter fila menor.
+ * Chama o Gemini com retry automático, cadeia de fallback entre modelos e
+ * rotação entre múltiplas chaves de API (todas gratuitas — o limite de uso é
+ * por chave, então 2–3 chaves multiplicam a capacidade em horários de pico).
+ *
+ * Variáveis de ambiente:
+ *   GEMINI_API_KEY     (obrigatória — a principal)
+ *   GEMINI_API_KEY_2   (opcional — entra na rotação)
+ *   GEMINI_API_KEY_3   (opcional — entra na rotação)
  */
 const MODEL_CHAIN = ['gemini-3.6-flash', 'gemini-flash-latest'] as const;
 
+function getApiKeys(): string[] {
+  return [process.env.GEMINI_API_KEY, process.env.GEMINI_API_KEY_2, process.env.GEMINI_API_KEY_3].filter(
+    (k): k is string => Boolean(k)
+  );
+}
+
 async function generateWithRetry(
-  ai: { models: { generateContent: (args: GenerateContentParameters) => Promise<GenerateContentResponse> } },
   userPrompt: string,
   systemPrompt: string
 ): Promise<GenerateContentResponse> {
+  const keys = getApiKeys();
   const MAX_ATTEMPTS = 3;
   let lastError: unknown;
 
-  for (const model of MODEL_CHAIN) {
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      try {
-        return await ai.models.generateContent({
-          model,
-          contents: userPrompt,
-          config: {
-            systemInstruction: systemPrompt,
-            responseMimeType: 'application/json',
-            temperature: 0.2,
-          },
-        });
-      } catch (err) {
-        lastError = err;
-        const msg = err instanceof Error ? err.message : String(err);
-        const transient = /high demand|overloaded|429|503|RESOURCE_EXHAUSTED|UNAVAILABLE/i.test(msg);
-        if (!transient) break; // erro não transitório: pula para o próximo modelo da cadeia
-        if (attempt === MAX_ATTEMPTS) break; // esgotou tentativas: próximo modelo
-        // 2s → 4s (com jitter)
-        const waitMs = 2000 * attempt + Math.random() * 1000;
-        await new Promise((r) => setTimeout(r, waitMs));
+  for (const key of keys) {
+    const { GoogleGenAI } = await import('@google/genai');
+    const ai = new GoogleGenAI({ apiKey: key });
+
+    for (const model of MODEL_CHAIN) {
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+          return await ai.models.generateContent({
+            model,
+            contents: userPrompt,
+            config: {
+              systemInstruction: systemPrompt,
+              responseMimeType: 'application/json',
+              temperature: 0.2,
+            },
+          });
+        } catch (err) {
+          lastError = err;
+          const msg = err instanceof Error ? err.message : String(err);
+          const transient =
+            /high demand|overloaded|429|503|RESOURCE_EXHAUSTED|UNAVAILABLE|rate limit|quota/i.test(msg);
+          if (!transient) break; // erro não transitório: pula para o próximo modelo
+          if (attempt === MAX_ATTEMPTS) break; // esgotou tentativas: próximo modelo
+          // 2s → 4s (com jitter)
+          const waitMs = 2000 * attempt + Math.random() * 1000;
+          await new Promise((r) => setTimeout(r, waitMs));
+        }
       }
     }
   }
@@ -137,9 +154,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { GoogleGenAI } = await import('@google/genai');
-    const ai = new GoogleGenAI({ apiKey });
-
     const systemPrompt = `Você é um analista jurídico sênior especializado em direito do consumidor (CDC), atuação em Procon e subsídios de plataformas de delivery.
 
 Receberá a manifestação de um consumidor e deverá produzir um parecer técnico objetivo, EM PORTUGUÊS, retornando EXATAMENTE um objeto JSON válido (sem markdown, sem cercas de código) com esta forma:
@@ -164,7 +178,7 @@ CONTEÚDO DA MANIFESTAÇÃO:
 ${conteudo.slice(0, 30000)}
 """`;
 
-    const response = await generateWithRetry(ai, userPrompt, systemPrompt);
+    const response = await generateWithRetry(userPrompt, systemPrompt);
 
     const raw = response.text ?? '';
 
