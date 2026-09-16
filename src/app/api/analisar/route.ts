@@ -17,6 +17,10 @@ import { calculateKeetaBusinessDeadline, isoParaBR } from '@/lib/prazo';
  */
 const MODEL_CHAIN = ['gemini-3.6-flash', 'gemini-flash-latest'] as const;
 
+/** Versão do prompt de análise — incrementar a cada mudança de comportamento
+ *  da IA invalida o cache de análises antigas (o hash inclui este valor). */
+const PROMPT_VERSION = 'v3';
+
 function getApiKeys(): string[] {
   return [process.env.GEMINI_API_KEY, process.env.GEMINI_API_KEY_2, process.env.GEMINI_API_KEY_3].filter(
     (k): k is string => Boolean(k)
@@ -159,8 +163,18 @@ export async function POST(req: NextRequest) {
 
     // ── Cache: se já analisamos este conteúdo (mesmo hash), reaproveita ──
     // o sistema "aprende com si mesmo" sem repetir requisições ao Gemini.
+    // O hash inclui a versão do prompt e a assinatura dos T&C — melhorar a
+    // engenharia invalida o cache velho automaticamente.
     const { default: crypto } = await import('node:crypto');
-    const conteudoHash = crypto.createHash('sha256').update(`${tipo}:${conteudo}`).digest('hex');
+    const termosParaHash = await store.listTermos();
+    const assinaturaTermos = termosParaHash
+      .map((t) => `${t.documento}:${t.versao}:${t.conteudo.length}`)
+      .sort()
+      .join('|');
+    const conteudoHash = crypto
+      .createHash('sha256')
+      .update(`${tipo}:${PROMPT_VERSION}:${assinaturaTermos}:${conteudo}`)
+      .digest('hex');
     const cached = await store.getHistoricoByHash(conteudoHash);
     if (cached) {
       return NextResponse.json(
@@ -175,7 +189,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── T&C da Keeta carregados — base factual para a seção Análise ──
-    const termos = await store.listTermos();
+    const termos = termosParaHash;
     const termosBloco =
       termos.length > 0
         ? `\n\n### BASE DE CONHECIMENTO OFICIAL — TERMOS E CONDIÇÕES DA KEETA (texto vigente extraído dos PDFs):\n${termos
