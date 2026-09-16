@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import ensureCanvasPolyfills from '@/lib/canvas-polyfill';
 
 /**
  * POST /api/analisar
@@ -49,6 +50,9 @@ export async function POST(req: NextRequest) {
       }
 
       // Extrai o texto de cada PDF no servidor
+      // (polyfill de canvas ANTES do pdf-parse: pdfjs precisa de
+      //  DOMMatrix/Path2D/ImageData mesmo para extração de texto)
+      ensureCanvasPolyfills();
       const { PDFParse } = await import('pdf-parse');
       const textos: string[] = [];
       for (const f of files) {
