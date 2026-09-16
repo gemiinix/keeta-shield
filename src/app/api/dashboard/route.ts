@@ -71,8 +71,36 @@ export async function GET(request: Request) {
       return [...contagem.entries()]
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5)
-        .map(([nome, qtd]) => ({ nome, qtd, pct: pct(qtd) }));
+        .map(([nome, qtd]) => {
+          // TMO médio por motivo (média dos casos com TMO registrado)
+          const tmos = lista
+            .map((e) => (motivoDe(e) === nome ? e.dadosCrm?.tmoSegundos ?? null : null))
+            .filter((v): v is number => v != null);
+          const tmoMedio = tmos.length > 0 ? Math.round(tmos.reduce((s, v) => s + v, 0) / tmos.length) : null;
+          return { nome, qtd, pct: pct(qtd), tmoMedio };
+        });
     };
+
+    // ── TMO: Tempo Médio de Operação (segundos até o 1º salvamento) ──
+    const tmosGeral = casos
+      .map((e) => e.dadosCrm?.tmoSegundos ?? null)
+      .filter((v): v is number => v != null);
+    const tmoMedioGeral =
+      tmosGeral.length > 0 ? Math.round(tmosGeral.reduce((s, v) => s + v, 0) / tmosGeral.length) : null;
+    // Gargalo: motivo com maior TMO médio (entre os motivos do período)
+    const tmoPorMotivo = new Map<string, { total: number; n: number }>();
+    for (const e of casos) {
+      const motivo = motivoDe(e);
+      const tmo = e.dadosCrm?.tmoSegundos;
+      if (!motivo || tmo == null) continue;
+      const atual = tmoPorMotivo.get(motivo) ?? { total: 0, n: 0 };
+      atual.total += tmo;
+      atual.n += 1;
+      tmoPorMotivo.set(motivo, atual);
+    }
+    const gargalo = [...tmoPorMotivo.entries()]
+      .map(([nome, { total, n }]) => ({ nome, tmoMedio: Math.round(total / n) }))
+      .sort((a, b) => b.tmoMedio - a.tmoMedio)[0] ?? null;
 
     const metricas = {
       periodo: { ano, mes, total: n },
@@ -87,6 +115,11 @@ export async function GET(request: Request) {
         semRA: { qtd: semRA.length, pct: pct(semRA.length) },
       },
       top5MotivosGeral: top5(casos),
+      tmo: {
+        medioGeralSegundos: tmoMedioGeral,
+        casosComTmo: tmosGeral.length,
+        gargalo: gargalo ? { motivo: gargalo.nome, tmoMedioSegundos: gargalo.tmoMedio } : null,
+      },
       top5PorEtapa: {
         apenasT1: top5(apenasT1),
         t1MaisT2: top5(t1MaisT2),

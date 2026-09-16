@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { MOTIVOS_PROCON } from '@/constants/motivos';
 import { calculateKeetaBusinessDeadline, isoParaBR } from '@/lib/prazo';
 import type { CrmSnapshot } from '@/lib/types';
@@ -82,9 +82,9 @@ function ActionButton({
   );
 }
 
-export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot, casoId }: Props) {
+export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot: snapshotSalvo, casoId }: Props) {
   // ── Campos pré-preenchidos pela IA (editáveis; snapshot repõe os salvos) ──
-  const saved = snapshot?.campos ?? {};
+  const saved = snapshotSalvo?.campos ?? {};
   const [salvando, setSalvando] = useState(false);
   const [msgSalvo, setMsgSalvo] = useState<string | null>(null);
   const [responsavel] = useState(saved.responsavel ?? 'Anderson Figueredo');
@@ -121,6 +121,12 @@ export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot
   const [reembolso, setReembolso] = useState(saved.reembolso ?? '');
   const [compensacao, setCompensacao] = useState(saved.compensacao ?? '');
   const [comentarios, setComentarios] = useState(saved.comentarios ?? '');
+
+  // ── TMO: cronômetro do caso ──
+  // Inicia quando o formulário monta (a análise chegou) e congela no primeiro
+  // 'Salvar no histórico'. Reabrir um caso pelo Histórico não reconta: o TMO
+  // de um caso é o tempo até a primeira conclusão — registro único.
+  const inicioRef = useRef(Date.now());
 
   // ── Prazo de processo administrativo: 10 dias úteis a partir de HOJE ──
   // Mesma regra utilitária do backend (prazo.ts) — cálculo no cliente.
@@ -183,6 +189,12 @@ export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot
           compensacao,
           comentarios,
         },
+        // TMO: congela no primeiro salvamento — salvamentos posteriores
+        // preservam o valor original (reabrir/atualizar não reconta).
+        tmoSegundos:
+          snapshotSalvo?.tmoSegundos != null
+            ? snapshotSalvo.tmoSegundos
+            : Math.max(0, Math.floor((Date.now() - inicioRef.current) / 1000)),
         atualizadoEm: new Date().toISOString(),
       };
       const res = await fetch('/api/historico', {

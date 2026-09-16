@@ -8,10 +8,11 @@ import {
   ExclamationTriangleIcon,
   ArrowDownTrayIcon,
   PhotoIcon,
+  ClockIcon,
 } from '@heroicons/react/24/outline';
 
 type Contagem = { qtd: number; pct: number };
-type TopItem = { nome: string; qtd: number; pct: number };
+type TopItem = { nome: string; qtd: number; pct: number; tmoMedio: number | null };
 
 type DashboardData = {
   periodo: { ano: number; mes: number; total: number };
@@ -28,6 +29,11 @@ type DashboardData = {
     t1MaisT2: TopItem[];
     naDiretoProcon: TopItem[];
   };
+  tmo: {
+    medioGeralSegundos: number | null;
+    casosComTmo: number;
+    gargalo: { motivo: string; tmoMedioSegundos: number } | null;
+  };
   insightsGerados: string;
 };
 
@@ -40,14 +46,29 @@ function pctFmt(p: number) {
   return `${p.toFixed(1).replace('.', ',')}%`;
 }
 
+/** Converte segundos para MM:SS (ex.: 120 → "02:00", 3725 → "62:05"). */
+function tmoFmt(seg: number | null) {
+  if (seg == null) return '—';
+  const m = Math.floor(seg / 60);
+  const s = seg % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 function Barra({ pct, tone = 'teal' }: { pct: number; tone?: 'teal' | 'yellow' | 'ink' }) {
+  // Cores sólidas em style inline: html2canvas e impressão não dependem de
+  // classes utilitárias para renderizar as barras do funil.
   const cor =
-    tone === 'teal' ? 'bg-keeta-teal' : tone === 'yellow' ? 'bg-keeta-yellow' : 'bg-ink/70';
+    tone === 'teal' ? '#19B394' : tone === 'yellow' ? '#FFD600' : 'rgba(20,32,29,0.7)';
+  const fundo = '#F4F7F6';
   return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface" aria-hidden="true">
+    <div
+      className="h-1.5 w-full overflow-hidden rounded-full"
+      style={{ backgroundColor: fundo }}
+      aria-hidden="true"
+    >
       <div
-        className={`h-full rounded-full ${cor}`}
-        style={{ width: `${Math.min(100, pct)}%` }}
+        className="h-full rounded-full"
+        style={{ width: `${Math.min(100, pct)}%`, backgroundColor: cor }}
       />
     </div>
   );
@@ -76,11 +97,15 @@ export default function DashboardPage() {
   const [exportando, setExportando] = useState(false);
 
   // ── Exportação PNG (html2canvas, import dinâmico — só carrega no clique) ──
+  // A largura do relatório é travada em 1200px durante a captura (proporção
+  // idêntica à de um desktop) e restaurada em seguida.
   const exportarPNG = useCallback(async () => {
     const alvo = document.getElementById('relatorio-dashboard');
     if (!alvo || !data || exportando) return;
     setExportando(true);
+    const larguraOriginal = alvo.style.width;
     try {
+      alvo.style.width = '1200px';
       const { default: html2canvas } = await import('html2canvas');
       const canvas = await html2canvas(alvo, {
         scale: 2, // nitidez p/ imagem de reporte
@@ -96,6 +121,7 @@ export default function DashboardPage() {
       console.error('[dashboard:png]', err);
       setErro('Falha ao gerar a imagem do relatório.');
     } finally {
+      alvo.style.width = larguraOriginal;
       setExportando(false);
     }
   }, [data, exportando]);
@@ -218,7 +244,7 @@ export default function DashboardPage() {
 
       {data && (
         <>
-          {/* Card principal: total de casos + funil */}
+          {/* Card principal: total de casos + funil + TMO */}
           <section className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="rounded-lg border border-line bg-white p-6">
               <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-ink/50">
@@ -233,12 +259,28 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {/* TMO médio */}
+            <div className="rounded-lg border border-line bg-white p-6">
+              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-ink/50">
+                <ClockIcon className="h-4 w-4 text-keeta-teal" />
+                TMO Médio
+              </div>
+              <div className="mt-3 font-display text-5xl font-extrabold text-ink">
+                {tmoFmt(data.tmo?.medioGeralSegundos ?? null)}
+              </div>
+              <div className="mt-1 text-sm text-ink/60">
+                {data.tmo && data.tmo.casosComTmo > 0
+                  ? `${data.tmo.casosComTmo} caso${data.tmo.casosComTmo === 1 ? '' : 's'} com TMO registrado`
+                  : 'Sem TMO registrado no período'}
+              </div>
+            </div>
+
             {/* Funil de atendimento */}
-            <div className="rounded-lg border border-line bg-white p-6 lg:col-span-2">
+            <div className="rounded-lg border border-line bg-white p-6 lg:col-span-3">
               <div className="mb-4 text-[11px] font-bold uppercase tracking-wider text-ink/50">
                 Funil de Atendimento
               </div>
-              <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 {(
                   [
                     { label: 'Apenas T1', c: data.funilAtendimento.apenasT1, tone: 'teal' as const },
@@ -366,6 +408,7 @@ export default function DashboardPage() {
                       <th className={thCls}>Motivo</th>
                       <th className={thCls + ' text-right'}>Qtd</th>
                       <th className={thCls + ' text-right'}>% do total</th>
+                      <th className={thCls + ' text-right'}>TMO Médio</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -375,12 +418,28 @@ export default function DashboardPage() {
                         <td className="px-3 py-2 text-[13px] text-ink/80">{m.nome}</td>
                         <td className={tdNum}>{m.qtd}</td>
                         <td className="px-3 py-2 text-right text-[13px] text-ink/60">{pctFmt(m.pct)}</td>
+                        <td className="px-3 py-2 text-right text-[13px] font-semibold text-ink/80">{tmoFmt(m.tmoMedio ?? null)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               )}
             </div>
+
+            {/* Gargalo de TMO — motivo mais demorado */}
+            {data.tmo?.gargalo && (
+              <div className="flex flex-col justify-center rounded-lg border border-warn-amber/30 bg-warn-bg px-5 py-4">
+                <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-warn-amber">
+                  <ClockIcon className="h-4 w-4" />
+                  Gargalo da Operação
+                </div>
+                <p className="mt-2 text-sm leading-relaxed text-ink/85">
+                  <strong className="font-semibold text-ink">{data.tmo.gargalo.motivo}</strong> é o
+                  motivo mais demorado para resolver — TMO médio de{' '}
+                  <strong className="font-semibold text-warn-amber">{tmoFmt(data.tmo.gargalo.tmoMedioSegundos)}</strong>.
+                </p>
+              </div>
+            )}
 
             {/* Sub-grid: Top 5 por etapa */}
             {(

@@ -15,7 +15,8 @@ Recebe um JSON com métricas mensais de casos Procon (órgãos de defesa do cons
 1. Volume total de casos do período;
 2. Comportamento do consumidor: se foi direto ao Procon (sem passar por T1/RA) ou passou por atendimento interno;
 3. Qual motivo mais escala para T2 (segunda camada de atendimento);
-4. O cruzamento com Reclame Aqui (RA), quando relevante.
+4. O cruzamento com Reclame Aqui (RA), quando relevante;
+5. A eficiência da operação: comente o TMO médio geral (tmo.medioGeralSegundos, em segundos) e destaque qual motivo está tomando mais tempo para ser resolvido (tmo.gargalo), quando disponíveis.
 Escreva em português do Brasil, tom executivo e direto. Retorne apenas o texto do insight, sem títulos, sem markdown, sem saudações.`;
 
 function getApiKeys(): string[] {

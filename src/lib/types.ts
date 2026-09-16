@@ -36,6 +36,9 @@ export type CrmSnapshot = {
   dadosIA?: DadosIAForm;
   /** Campos do formulário (IA + manuais) no momento do salvamento. */
   campos?: Record<string, string>;
+  /** TMO — Tempo Médio de Operação: segundos entre a análise chegar e o
+   *  primeiro 'Salvar no histórico' do caso. Registrado uma única vez. */
+  tmoSegundos?: number | null;
   atualizadoEm?: string;
 };
 
