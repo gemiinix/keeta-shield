@@ -1,5 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ensureCanvasPolyfills from '@/lib/canvas-polyfill';
+import type { GenerateContentParameters, GenerateContentResponse } from '@google/genai';
+
+/**
+ * Chama o Gemini com retry automático (máx. 3 tentativas, backoff exponencial).
+ * Picos de demanda (429/503) são temporários — a espera progressiva resolve
+ * sem exigir nova ação do usuário.
+ */
+async function generateWithRetry(
+  ai: { models: { generateContent: (args: GenerateContentParameters) => Promise<GenerateContentResponse> } },
+  userPrompt: string,
+  systemPrompt: string
+): Promise<GenerateContentResponse> {
+  const MAX_ATTEMPTS = 3;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await ai.models.generateContent({
+        model: 'gemini-3.6-flash',
+        contents: userPrompt,
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: 'application/json',
+          temperature: 0.2,
+        },
+      });
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const transient = /high demand|overloaded|429|503|RESOURCE_EXHAUSTED|UNAVAILABLE/i.test(msg);
+      if (!transient || attempt === MAX_ATTEMPTS) throw err;
+      // 2s → 4s (com jitter)
+      const waitMs = 2000 * attempt + Math.random() * 1000;
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+  }
+  throw lastError;
+}
 
 /**
  * POST /api/analisar
@@ -12,7 +50,7 @@ import ensureCanvasPolyfills from '@/lib/canvas-polyfill';
  *   - clausulaAplicavel: cláusula dos T&C aplicável ao caso (CDC)
  *   - templateSugerido: minuta de resposta com variáveis {{VARIAVEL}}
  *
- * Modelo: gemini-3.6-flash (@google/genai oficial).
+ * Modelo: gemini-3.6-flash (@google/genai oficial), com retry em picos de demanda.
  * Requer GEMINI_API_KEY nas variáveis de ambiente.
  *
  * Nota: @google/genai e pdf-parse são importados dinamicamente (lazy) dentro do
@@ -121,15 +159,7 @@ CONTEÚDO DA MANIFESTAÇÃO:
 ${conteudo.slice(0, 30000)}
 """`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: userPrompt,
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: 'application/json',
-        temperature: 0.2,
-      },
-    });
+    const response = await generateWithRetry(ai, userPrompt, systemPrompt);
 
     const raw = response.text ?? '';
 
