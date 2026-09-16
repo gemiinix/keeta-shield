@@ -5,6 +5,7 @@ import { Bars3Icon } from '@heroicons/react/24/outline';
 import ProconFlow from '@/components/flows/ProconFlow';
 import SubsidioFlow from '@/components/flows/SubsidioFlow';
 import TemplateEditor from '@/components/editor/TemplateEditor';
+import CrmForm, { type CrmDadosIA } from '@/components/editor/CrmForm';
 import HistoricoPage from '@/components/pages/HistoricoPage';
 import TemplatesPage from '@/components/pages/TemplatesPage';
 import TermosPage from '@/components/pages/TermosPage';
@@ -15,6 +16,14 @@ type Tab = 'procon' | 'subsidio';
 export type AnalysisResult = {
   extracted: Record<string, string>;
   templateText: string;
+  crm?: {
+    dadosIA: CrmDadosIA;
+    prazoDefesa: {
+      dataAberturaISO: string;
+      deadlineFinalISO: string;
+      diasRestantes: number;
+    } | null;
+  };
 };
 
 const PAGE_TITLES: Record<NavKey, { title: string; subtitle: string }> = {
@@ -45,19 +54,53 @@ export default function MainDashboard({
 }) {
   const [activeTab, setActiveTab] = useState<Tab>('procon');
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  // Modo pós-análise Procon: 'crm' (formulário) | 'editor' (minuta)
+  const [posAnalise, setPosAnalise] = useState<'crm' | 'editor'>('crm');
 
-  // Fluxo de processamento concluído → exibe o TemplateEditor,
+  const abrirResultado = (r: AnalysisResult | null) => {
+    setAnalysisResult(r);
+    // Procon com dados de CRM → começa no formulário; Subsídio → direto no editor
+    setPosAnalise(r?.crm ? 'crm' : 'editor');
+  };
+
+  // Fluxo de processamento concluído → exibe o CRM (Procon) ou TemplateEditor,
   // MAS apenas enquanto a aba Nova Análise estiver ativa.
   // Navegar para Histórico/Templates/Termos funciona normalmente; voltar
-  // para Nova Análise retoma o editor exatamente onde estava.
+  // para Nova Análise retoma tudo exatamente onde estava.
   if (analysisResult && activeNav === 'nova-analise') {
     return (
-      <main className="flex h-full min-w-0 flex-1 overflow-hidden bg-white">
-        <TemplateEditor
-          extracted={analysisResult.extracted}
-          templateText={analysisResult.templateText}
-          onClose={() => setAnalysisResult(null)}
-        />
+      <main className="flex h-full min-w-0 flex-1 flex-col overflow-y-auto bg-white">
+        {analysisResult.crm && posAnalise === 'crm' ? (
+          <div className="mx-auto w-full max-w-6xl px-5 py-8 pl-16 lg:px-10 lg:pl-10">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-display text-lg font-bold uppercase tracking-tight text-ink">
+                  Formulário de CRM — Caso Procon
+                </h2>
+                <p className="mt-0.5 text-sm font-medium text-keeta-teal-dark">
+                  Campos da IA pré-preenchidos; complete os manuais.
+                </p>
+              </div>
+              <button
+                onClick={() => setAnalysisResult(null)}
+                className="rounded-lg border border-line bg-white px-3 py-2 text-xs font-semibold text-ink/55 transition-colors duration-150 hover:bg-surface hover:text-ink"
+              >
+                nova análise
+              </button>
+            </div>
+            <CrmForm
+              dadosIA={analysisResult.crm.dadosIA}
+              prazoDefesa={analysisResult.crm.prazoDefesa}
+              onOpenTemplate={() => setPosAnalise('editor')}
+            />
+          </div>
+        ) : (
+          <TemplateEditor
+            extracted={analysisResult.extracted}
+            templateText={analysisResult.templateText}
+            onClose={() => setAnalysisResult(null)}
+          />
+        )}
       </main>
     );
   }
@@ -88,7 +131,7 @@ export default function MainDashboard({
       <div className="min-w-0 flex-1 overflow-y-auto px-5 py-8 pl-16 lg:px-10 lg:pl-10">
         {activeNav === 'historico' && (
         <HistoricoPage
-          onOpenAnalysis={setAnalysisResult}
+          onOpenAnalysis={abrirResultado}
           onNavigateToEditor={() => onNavigate('nova-analise')}
         />
       )}
@@ -141,9 +184,9 @@ export default function MainDashboard({
             <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_300px]">
               <section key={activeTab} className="animate-fade-in-up min-w-0">
                 {activeTab === 'procon' ? (
-                  <ProconFlow onAnalysisComplete={setAnalysisResult} />
+                  <ProconFlow onAnalysisComplete={abrirResultado} />
                 ) : (
-                  <SubsidioFlow onAnalysisComplete={setAnalysisResult} />
+                  <SubsidioFlow onAnalysisComplete={abrirResultado} />
                 )}
               </section>
 

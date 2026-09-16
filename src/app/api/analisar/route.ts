@@ -4,6 +4,7 @@ import type { GenerateContentResponse } from '@google/genai';
 import { store } from '@/lib/store';
 import type { TipoAnalise } from '@/lib/types';
 import { calculateKeetaBusinessDeadline, isoParaBR } from '@/lib/prazo';
+import { MOTIVOS_PROCON } from '@/constants/motivos';
 
 /**
  * Chama o Gemini com retry automático, cadeia de fallback entre modelos e
@@ -19,7 +20,15 @@ const MODEL_CHAIN = ['gemini-3.6-flash', 'gemini-flash-latest'] as const;
 
 /** Versão do prompt de análise — incrementar a cada mudança de comportamento
  *  da IA invalida o cache de análises antigas (o hash inclui este valor). */
-const PROMPT_VERSION = 'v3';
+const PROMPT_VERSION = 'v4';
+
+/** Dados estruturados extraídos pela IA para o formulário de CRM (Procon). */
+type DadosFormulario = {
+  cipProcon: string;
+  numeroPedido: string;
+  mcdonalds: boolean;
+  motivoClassificado: string;
+};
 
 function getApiKeys(): string[] {
   return [process.env.GEMINI_API_KEY, process.env.GEMINI_API_KEY_2, process.env.GEMINI_API_KEY_3].filter(
@@ -187,7 +196,6 @@ export async function POST(req: NextRequest) {
         { status: 200 }
       );
     }
-
     // ── T&C da Keeta carregados — base factual para a seção Análise ──
     const termos = termosParaHash;
     const termosBloco =
@@ -207,20 +215,40 @@ export async function POST(req: NextRequest) {
 - NUNCA invente números de protocolo, nomes, datas, IDs ou valores que não estejam no documento.
 - Nunca inclua texto fora do JSON.`;
 
-    const CONTRATO_JSON = `Você deve devolver EXATAMENTE um objeto JSON válido (sem markdown, sem cercas de código, sem texto fora do JSON) com estas chaves:
+    const CONTRATO_JSON_PROCON = `Você deve devolver EXATAMENTE um objeto JSON válido (sem markdown, sem cercas de código, sem texto fora do JSON) com estas chaves:
 
 {
   "resumoExecutivo": "...",
   "clausulaAplicavel": "...",
   "templateSugerido": "...",
-  "dataAbertura": "DD/MM/YYYY"
+  "dataAbertura": "DD/MM/YYYY",
+  "dadosFormulario": {
+    "cipProcon": "...",
+    "numeroPedido": "...",
+    "mcdonalds": false,
+    "motivoClassificado": "..."
+  }
+}`;
+
+    const CONTRATO_JSON = `Você deve devolver EXATAMENTE um objeto JSON válido (sem markdown, sem cercas de código, sem texto fora do JSON) com estas chaves:
+
+{
+  "resumoExecutivo": "...",
+  "clausulaAplicavel": "...",
+  "templateSugerido": "..."
 }`;
 
     const PROCON_REGRAS = `### Regras do campo dataAbertura:
 - Procure no cabeçalho a data de abertura, geralmente no formato "Cidade, DD/MM/YYYY" (ex.: "São Paulo, 09/09/2026") — extraia apenas "09/09/2026".
 - Procure também em campos como "Data da Abertura", "Data de Recebimento", "Registrado em", datas de assinatura ou protocolo.
 - Se houver múltiplas datas, use a mais antiga associada à abertura/registro da manifestação.
-- Se NÃO houver data alguma no documento, devolva "" (string vazia). NUNCA invente uma data.`;
+- Se NÃO houver data alguma no documento, devolva "" (string vazia). NUNCA invente uma data.
+
+### Regras do campo dadosFormulario:
+- "cipProcon": o número do protocolo/CIP Procon (do campo "Protocolo", "CIP" ou equivalente; pode ser também o número presente no padrão atendimento_cip_NNNN de identificadores do documento). Se não constar, "".
+- "numeroPedido": o número do pedido mencionado no caso. Se não constar, "".
+- "mcdonalds": booleano — true somente se "McDonalds" ou "Mc Donalds" for mencionado no texto.
+- "motivoClassificado": uma das strings EXATAS da lista de motivos oficiais (injetada abaixo) que melhor descreve a reclamação central. Se nenhuma se aplicar, use "".`;
 
     const systemPrompt =
       tipo === 'procon'
@@ -231,8 +259,9 @@ Foco de cada campo:
 - "clausulaAplicavel": os T&Cs de uso do app, atrasos de entrega, estornos/reembolsos ou responsabilidade do restaurante/estabelecimento que amparam a posição da Keeta, com fundamento do CDC quando cabível.
 - "templateSugerido": minuta de defesa Procon, seguindo EXATAMENTE o padrão abaixo.
 - "dataAbertura": a data de abertura da manifestação (regras abaixo).
+- "dadosFormulario": dados estruturados do caso para o formulário de CRM (regras abaixo).
 
-${CONTRATO_JSON}
+${CONTRATO_JSON_PROCON}
 
 ${PROCON_REGRAS}
 
@@ -266,6 +295,9 @@ Abertura no Reclame Aqui:
 
 STATUS ATUAL
 <status atual do caso, ex.: Aguardando resposta da empresa em prazo legal>
+
+### LISTA OFICIAL DE MOTIVOS (para "motivoClassificado" — use a string EXATA, sem traduzir/reformular):
+${MOTIVOS_PROCON.map((m) => `- ${m}`).join('\n')}
 ${REGRAS_SAIDA}`
         : `Você é o Motor de Extração de Dados Rigoroso do fluxo de Subsídio da Keeta Delivery Brasil. O usuário vai te enviar e-mails, ofícios ou documentos jurídicos em "juridiquês" — seu objetivo NÃO é justificar com T&Cs, e sim atuar como parser rigoroso que traduz o documento num checklist acionável para o time de operação.
 
@@ -335,12 +367,19 @@ ${conteudo.slice(0, 30000)}
       parsed = JSON.parse(match[0]);
     }
 
-    const { resumoExecutivo, clausulaAplicavel, templateSugerido, dataAbertura } = parsed as {
-      resumoExecutivo?: string;
-      clausulaAplicavel?: string;
-      templateSugerido?: string;
-      dataAbertura?: string;
-    };
+    const { resumoExecutivo, clausulaAplicavel, templateSugerido, dataAbertura, dadosFormulario } =
+      parsed as {
+        resumoExecutivo?: string;
+        clausulaAplicavel?: string;
+        templateSugerido?: string;
+        dataAbertura?: string;
+        dadosFormulario?: {
+          cipProcon?: string;
+          numeroPedido?: string;
+          mcdonalds?: boolean;
+          motivoClassificado?: string;
+        };
+      };
 
     // ── Prazo de defesa: cálculo determinístico no servidor ──
     // 10 dias corridos da abertura; caindo em fim de semana/feriado nacional,
@@ -370,6 +409,36 @@ ${conteudo.slice(0, 30000)}
       );
     }
 
+    // ── dadosFormulario: extração estruturada para o CRM (apenas Procon) ──
+    // Tolerante a ausência: campos vazios se o modelo não preencheu — o
+    // formulário no front continua utilizável com preenchimento manual.
+    const dadosForm: DadosFormulario | null =
+      tipo === 'procon'
+        ? {
+            cipProcon: String(dadosFormulario?.cipProcon ?? '').slice(0, 100),
+            numeroPedido: String(dadosFormulario?.numeroPedido ?? '').slice(0, 100),
+            mcdonalds: dadosFormulario?.mcdonalds === true,
+            motivoClassificado: MOTIVOS_PROCON.includes(dadosFormulario?.motivoClassificado ?? '')
+              ? (dadosFormulario?.motivoClassificado as string)
+              : '',
+          }
+        : null;
+
+    // ── Preenche o Protocolo do template com o CIP extraído (quando houver) ──
+    if (dadosForm?.cipProcon) {
+      templateFinal = templateFinal.replace(
+        /^(Protocolo:\s*)\{\{PROTOCOLO\}\}$/m,
+        `$1${dadosForm.cipProcon}`
+      );
+    }
+    // ── Preenche o ID do Pedido do template quando houver e o template ainda tem a variável ──
+    if (dadosForm?.numeroPedido) {
+      templateFinal = templateFinal.replace(
+        /^(ID do Pedido:\s*)\{\{ID_PEDIDO\}\}$/m,
+        `$1${dadosForm.numeroPedido}`
+      );
+    }
+
     // Grava no histórico — alimenta o cache (hash) e a página Histórico.
     // Falha ao gravar NUNCA derruba a análise (best-effort).
     try {
@@ -394,6 +463,7 @@ ${conteudo.slice(0, 30000)}
       resposta.dataAbertura = dataAbertura;
       resposta.prazoDefesa = prazoDefesa;
     }
+    if (dadosForm) resposta.dadosFormulario = dadosForm;
 
     return NextResponse.json(resposta);
   } catch (err) {

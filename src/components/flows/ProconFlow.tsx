@@ -18,6 +18,19 @@ export default function ProconFlow({
   onAnalysisComplete: (result: {
     extracted: Record<string, string>;
     templateText: string;
+    crm?: {
+      dadosIA: {
+        cipProcon: string;
+        numeroPedido: string;
+        mcdonalds: boolean;
+        motivoClassificado: string;
+      };
+      prazoDefesa: {
+        dataAberturaISO: string;
+        deadlineFinalISO: string;
+        diasRestantes: number;
+      } | null;
+    };
   }) => void;
 }) {
   const [isDragging, setIsDragging] = useState(false);
@@ -72,8 +85,15 @@ export default function ProconFlow({
         clausulaAplicavel: string;
         templateSugerido: string;
         prazoDefesa?: {
+          dataAberturaISO: string;
           deadlineFinalISO: string;
           diasRestantes: number;
+        };
+        dadosFormulario?: {
+          cipProcon: string;
+          numeroPedido: string;
+          mcdonalds: boolean;
+          motivoClassificado: string;
         };
       };
 
@@ -99,6 +119,20 @@ export default function ProconFlow({
       onAnalysisComplete({
         extracted,
         templateText: data.templateSugerido,
+        crm:
+          data.dadosFormulario || data.prazoDefesa
+            ? {
+                dadosIA:
+                  data.dadosFormulario ??
+                  {
+                    cipProcon: '',
+                    numeroPedido: '',
+                    mcdonalds: false,
+                    motivoClassificado: '',
+                  },
+                prazoDefesa: data.prazoDefesa ?? null,
+              }
+            : undefined,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro inesperado na análise.');
