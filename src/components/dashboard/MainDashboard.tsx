@@ -109,8 +109,15 @@ export default function MainDashboard({
   if (analysisResult && activeNav === 'nova-analise') {
     return (
       <main className="flex h-full min-w-0 flex-1 flex-col overflow-y-auto bg-white">
-        {analysisResult.crm && posAnalise === 'crm' ? (
-          <div className="mx-auto w-full max-w-6xl px-5 py-8 pl-16 lg:px-10 lg:pl-10">
+        {analysisResult.crm ? (
+          <>
+            {/* Formulário e minuta permanecem MONTADOS (hidden) enquanto o
+                caso está aberto — alternar um ↔ outro nunca perde o estado
+                dos campos digitados nem zera o cronômetro do TMO. */}
+            <div
+              className={posAnalise === 'crm' ? 'block' : 'hidden'}
+            >
+            <div className="mx-auto w-full max-w-6xl px-5 py-8 pl-16 lg:px-10 lg:pl-10">
             <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-4">
                 <div>
@@ -124,7 +131,7 @@ export default function MainDashboard({
                 {/* Cronômetro do caso — TMO ao vivo (MM:SS) */}
                 <div
                   className="flex items-center gap-2 rounded-lg border border-keeta-teal/40 bg-keeta-teal/10 px-3 py-1.5"
-                  title="Tempo Médio de Operação — tempo até o primeiro salvamento do caso"
+                  title="Tempo Médio de Operação — tempo total do caso; congela no primeiro salvamento"
                 >
                   <ClockIcon className="h-4 w-4 text-keeta-teal-dark" />
                   <span className="font-mono text-lg font-bold tabular-nums text-keeta-teal-dark">
@@ -148,18 +155,23 @@ export default function MainDashboard({
               onOpenTemplate={() => setPosAnalise('editor')}
               onTmoFrozen={setTmoCongelado}
             />
-          </div>
+            </div>
+            </div>
+            <div className={posAnalise === 'editor' ? 'contents' : 'hidden'}>
+            <TemplateEditor
+              extracted={analysisResult.extracted}
+              templateText={analysisResult.templateText}
+              cronometro={tmoBadge}
+              onClose={() => setAnalysisResult(null)}
+              onBackToForm={() => setPosAnalise('crm')}
+            />
+            </div>
+          </>
         ) : (
           <TemplateEditor
             extracted={analysisResult.extracted}
             templateText={analysisResult.templateText}
-            cronometro={analysisResult.crm ? tmoBadge : undefined}
             onClose={() => setAnalysisResult(null)}
-            onBackToForm={
-              analysisResult.crm
-                ? () => setPosAnalise('crm')
-                : undefined
-            }
           />
         )}
       </main>
