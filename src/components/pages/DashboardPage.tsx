@@ -6,6 +6,8 @@ import {
   ArrowPathIcon,
   LightBulbIcon,
   ExclamationTriangleIcon,
+  ArrowDownTrayIcon,
+  PhotoIcon,
 } from '@heroicons/react/24/outline';
 
 type Contagem = { qtd: number; pct: number };
@@ -71,6 +73,37 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
+  const [exportando, setExportando] = useState(false);
+
+  // ── Exportação PNG (html2canvas, import dinâmico — só carrega no clique) ──
+  const exportarPNG = useCallback(async () => {
+    const alvo = document.getElementById('relatorio-dashboard');
+    if (!alvo || !data || exportando) return;
+    setExportando(true);
+    try {
+      const { default: html2canvas } = await import('html2canvas');
+      const canvas = await html2canvas(alvo, {
+        scale: 2, // nitidez p/ imagem de reporte
+        backgroundColor: '#FFFFFF',
+        useCORS: true,
+      });
+      const link = document.createElement('a');
+      const periodo = `${MESES[data.periodo.mes - 1]}-${data.periodo.ano}`;
+      link.download = `dashboard-keeta-shield-${periodo}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (err) {
+      console.error('[dashboard:png]', err);
+      setErro('Falha ao gerar a imagem do relatório.');
+    } finally {
+      setExportando(false);
+    }
+  }, [data, exportando]);
+
+  // ── Exportação PDF (impressão nativa do navegador → Salvar como PDF) ──
+  const exportarPDF = useCallback(() => {
+    window.print();
+  }, []);
 
   const load = useCallback(async () => {
     setCarregando(true);
@@ -101,8 +134,8 @@ export default function DashboardPage() {
   const semDados = data && data.totalCasos === 0;
 
   return (
-    <div className="mx-auto max-w-6xl">
-      {/* Cabeçalho */}
+    <div className="mx-auto max-w-6xl" id="relatorio-dashboard">
+      {/* Cabeçalho — entra na imagem/PDF */}
       <header className="mb-6">
         <h1 className="font-display text-2xl font-extrabold uppercase tracking-tight text-ink">
           Dashboard Analítico
@@ -112,8 +145,8 @@ export default function DashboardPage() {
         </p>
       </header>
 
-      {/* Controles de período */}
-      <div className="mb-6 flex flex-wrap items-center gap-3">
+      {/* Controles de período — NÃO entram na imagem/PDF */}
+      <div className="no-print mb-6 flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm font-semibold text-ink/70">
           <span>Período</span>
           <select
@@ -148,6 +181,25 @@ export default function DashboardPage() {
         >
           <ArrowPathIcon className={`h-4 w-4 ${carregando ? 'animate-spin' : ''}`} />
           Atualizar
+        </button>
+        <span className="hidden h-6 w-px bg-line sm:block" aria-hidden="true" />
+        <button
+          onClick={exportarPNG}
+          disabled={!data || exportando}
+          title="Baixa o relatório como imagem PNG"
+          className="inline-flex items-center gap-2 rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold text-ink/70 transition-colors hover:bg-surface disabled:opacity-50"
+        >
+          <PhotoIcon className="h-4 w-4" />
+          {exportando ? 'Gerando…' : 'Imagem (PNG)'}
+        </button>
+        <button
+          onClick={exportarPDF}
+          disabled={!data}
+          title="Abre a impressão do navegador — escolha “Salvar como PDF”"
+          className="inline-flex items-center gap-2 rounded-md bg-keeta-teal px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-keeta-teal-dark disabled:opacity-50"
+        >
+          <ArrowDownTrayIcon className="h-4 w-4" />
+          PDF
         </button>
       </div>
 

@@ -100,8 +100,8 @@ export default function Sidebar({
 
   return (
     <>
-      {/* Desktop: coluna fixa */}
-      <aside className="hidden h-full w-[250px] shrink-0 flex-col border-r border-line bg-white lg:flex">
+      {/* Desktop: coluna fixa — escondida na impressão do relatório */}
+      <aside className="no-print hidden h-full w-[250px] shrink-0 flex-col border-r border-line bg-white lg:flex">
         {content}
       </aside>
 

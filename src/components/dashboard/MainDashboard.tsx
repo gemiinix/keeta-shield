@@ -124,8 +124,8 @@ export default function MainDashboard({
 
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-white">
-      {/* Cabeçalho fixo de 72px */}
-      <header className="flex h-[72px] shrink-0 items-center border-b border-line bg-white px-5 pl-16 lg:px-10 lg:pl-10">
+      {/* Cabeçalho fixo de 72px — escondido na impressão do relatório */}
+      <header className="no-print flex h-[72px] shrink-0 items-center border-b border-line bg-white px-5 pl-16 lg:px-10 lg:pl-10">
         <div className="animate-fade-in-up min-w-0">
           <h1 className="font-display text-lg font-bold uppercase tracking-tight text-ink lg:text-xl">
             {title}

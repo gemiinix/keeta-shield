@@ -11,6 +11,7 @@
   "dependencies": {
     "@google/genai": "^2.22.0",
     "@heroicons/react": "^2.1.5",
+    "html2canvas": "^1.4.1",
     "next": "14.2.15",
     "pdf-parse": "^2.4.5",
     "postgres": "^3.4.9",
