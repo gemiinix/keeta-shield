@@ -40,8 +40,11 @@ export default function MainDashboard({
   const [activeTab, setActiveTab] = useState<Tab>('procon');
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
 
-  // Fluxo de processamento concluído → exibe o TemplateEditor
-  if (analysisResult) {
+  // Fluxo de processamento concluído → exibe o TemplateEditor,
+  // MAS apenas enquanto a aba Nova Análise estiver ativa.
+  // Navegar para Histórico/Templates funciona normalmente; voltar
+  // para Nova Análise retoma o editor exatamente onde estava.
+  if (analysisResult && activeNav === 'nova-analise') {
     return (
       <main className="flex-1 overflow-hidden bg-zinc-950">
         <TemplateEditor
