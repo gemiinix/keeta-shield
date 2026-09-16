@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ensureCanvasPolyfills from '@/lib/canvas-polyfill';
 import type { GenerateContentResponse } from '@google/genai';
+import { store } from '@/lib/store';
+import type { TipoAnalise } from '@/lib/types';
 
 /**
  * Chama o Gemini com retry automático, cadeia de fallback entre modelos e
@@ -154,6 +156,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Cache: se já analisamos este conteúdo (mesmo hash), reaproveita ──
+    // o sistema "aprende com si mesmo" sem repetir requisições ao Gemini.
+    const { default: crypto } = await import('node:crypto');
+    const conteudoHash = crypto.createHash('sha256').update(`${tipo}:${conteudo}`).digest('hex');
+    const cached = await store.getHistoricoByHash(conteudoHash);
+    if (cached) {
+      return NextResponse.json(
+        {
+          resumoExecutivo: cached.resumo,
+          clausulaAplicavel: cached.clausula,
+          templateSugerido: cached.templateGerado,
+          cache: true,
+        },
+        { status: 200 }
+      );
+    }
+
+    // ── T&C da Keeta carregados — base factual para a seção Análise ──
+    const termos = await store.listTermos();
+    const termosBloco =
+      termos.length > 0
+        ? `\n\n### TERMOS E CONDIÇÕES OFICIAIS DA KEETA (texto extraído dos PDFs vigentes — cite cláusulas destes textos, na letra, quando aplicáveis):\n${termos
+            .map((t) => `--- ${t.documento}${t.versao ? ` (versão ${t.versao})` : ''} ---\n${t.conteudo.slice(0, 15000)}`)
+            .join('\n\n')}`
+        : '';
+
     const systemPrompt = `Você é um analista jurídico sênior da Keeta Delivery Brasil, especializado em direito do consumidor (CDC), Procon e subsídios de plataformas de delivery.
 
 Sua tarefa: analisar a manifestação e devolver EXATAMENTE um objeto JSON válido (sem markdown, sem cercas de código, sem texto fora do JSON) com estas três chaves:
@@ -209,12 +237,11 @@ STATUS ATUAL
 CONTEÚDO DA MANIFESTAÇÃO:
 """
 ${conteudo.slice(0, 30000)}
-"""`;
+"""${termosBloco}`;
 
     const response = await generateWithRetry(userPrompt, systemPrompt);
 
     const raw = response.text ?? '';
-
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
@@ -236,6 +263,21 @@ ${conteudo.slice(0, 30000)}
         { error: 'Resposta do modelo incompleta — faltam campos obrigatórios.' },
         { status: 502 }
       );
+    }
+
+    // Grava no histórico — alimenta o cache (hash) e a página Histórico.
+    // Falha ao gravar NUNCA derruba a análise (best-effort).
+    try {
+      await store.saveHistorico({
+        tipo: tipo as TipoAnalise,
+        origem: req.headers.get('content-type')?.includes('multipart/form-data') ? 'pdf' : 'texto',
+        resumo: resumoExecutivo,
+        clausula: clausulaAplicavel,
+        templateGerado: templateSugerido,
+        conteudoHash,
+      });
+    } catch (dbErr) {
+      console.error('[analisar:saveHistorico]', dbErr);
     }
 
     return NextResponse.json({

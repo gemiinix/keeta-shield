@@ -30,7 +30,7 @@ function HighlightedText({ text }: { text: string }) {
   return <p className="whitespace-pre-wrap leading-relaxed">{parts}</p>;
 }
 
-const PLACEHOLDER_TEMPLATE = `RESUMO EXECUTIVO DO CASO – PROCON
+export const PLACEHOLDER_TEMPLATE = `RESUMO EXECUTIVO DO CASO – PROCON
 Protocolo: {{PROTOCOLO}}
 Prazo: {{PRAZO}}
 Nome: {{NOME_CONSUMIDOR}}
@@ -86,7 +86,22 @@ export default function TemplateEditor({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="rounded-lg bg-keeta-teal px-4 py-2 text-sm font-bold text-zinc-950 transition-colors hover:bg-keeta-teal-dark">
+          <button
+            onClick={() => {
+              // Exporta a peça interpolada como .txt (download real)
+              const blob = new Blob([interpolated], { type: 'text/plain;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              const dataHoje = new Date().toISOString().slice(0, 10);
+              a.href = url;
+              a.download = `keeta-shield-resposta-${dataHoje}.txt`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(url);
+            }}
+            className="rounded-lg bg-keeta-teal px-4 py-2 text-sm font-bold text-zinc-950 transition-colors hover:bg-keeta-teal-dark"
+          >
             Exportar Peça
           </button>
           <button
