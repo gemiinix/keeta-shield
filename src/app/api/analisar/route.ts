@@ -182,15 +182,34 @@ export async function POST(req: NextRequest) {
             .join('\n\n')}`
         : '';
 
-    const systemPrompt = `Você é um analista jurídico sênior da Keeta Delivery Brasil, especializado em direito do consumidor (CDC), Procon e subsídios de plataformas de delivery.
+    // ── systemInstruction bifurcado: Procon e Subsídio são ofícios diferentes ──
+    // Mesmo contrato de saída (resumoExecutivo/clausulaAplicavel/templateSugerido)
+    // para frontend, cache e histórico — mas o papel e o foco mudam por fluxo.
+    const REGRAS_SAIDA = `
+### Regras de preenchimento:
+- Se a informação constar no documento, PREENCHA o campo com o valor extraído (sem as chaves).
+- Se NÃO constar, mantenha exatamente a variável entre chaves duplas, ex.: {{NOME_CONSUMIDOR}}.
+- NUNCA invente números de protocolo, nomes, datas, IDs ou valores que não estejam no documento.
+- Nunca inclua texto fora do JSON.`;
 
-Sua tarefa: analisar a manifestação e devolver EXATAMENTE um objeto JSON válido (sem markdown, sem cercas de código, sem texto fora do JSON) com estas três chaves:
+    const CONTRATO_JSON = `Você deve devolver EXATAMENTE um objeto JSON válido (sem markdown, sem cercas de código, sem texto fora do JSON) com estas três chaves:
 
 {
-  "resumoExecutivo": "síntese factual da manifestação em 2-4 frases",
-  "clausulaAplicavel": "parecer jurídico identificando quais cláusulas dos Termos e Condições da Keeta (Customer, Rider ou Merchant — a aplicável ao caso) amparam a Keeta quanto a reembolso, penalidade ou obrigação, citando ou parafraseando fielmente a cláusula, com fundamento do CDC quando cabível",
-  "templateSugerido": "a minuta de resposta PREENCHIDA, seguindo EXATAMENTE o padrão abaixo"
-}
+  "resumoExecutivo": "...",
+  "clausulaAplicavel": "...",
+  "templateSugerido": "..."
+}`;
+
+    const systemPrompt =
+      tipo === 'procon'
+        ? `Você é um especialista em CX e análise de Procon para a Keeta Delivery Brasil. Sua função é analisar notificações e reclamações de consumidores fiscalizadas pelo Procon (com prazo legal de resposta).
+
+Foco de cada campo:
+- "resumoExecutivo": a queixa do consumidor e o pedido principal, em 2-4 frases factuais.
+- "clausulaAplicavel": os T&Cs de uso do app, atrasos de entrega, estornos/reembolsos ou responsabilidade do restaurante/estabelecimento que amparam a posição da Keeta, com fundamento do CDC quando cabível.
+- "templateSugerido": minuta de defesa Procon, seguindo EXATAMENTE o padrão abaixo.
+
+${CONTRATO_JSON}
 
 ### PADRÃO OBRIGATÓRIO DO templateSugerido (mantenha as seções e títulos na ordem exata):
 
@@ -210,7 +229,7 @@ O Problema:
 <resumo factual da reclamação do consumidor em 2-4 frases>
 
 Análise:
-<parecer com as cláusulas dos T&C da Keeta (Customer, Rider ou Merchant) que amparam a Keeta sobre reembolso, penalidade ou aplicabilidade, com fundamento CDC quando cabível>
+<parecer com as cláusulas dos T&C da Keeta que amparam a Keeta sobre reembolso, penalidade ou aplicabilidade, com fundamento CDC quando cabível>
 
 2. Tratativa e Resolução
 
@@ -222,16 +241,39 @@ Abertura no Reclame Aqui:
 
 STATUS ATUAL
 <status atual do caso, ex.: Aguardando resposta da empresa em prazo legal>
+${REGRAS_SAIDA}`
+        : `Você é um especialista paralegal da Keeta Delivery Brasil. O usuário vai te enviar ofícios ou requisições judiciais e extrajudiciais em "juridiquês" — seu objetivo é TRADUZIR isso para a operação.
 
-### Regras de preenchimento:
-- Se a informação constar no documento, PREENCHA o campo com o valor extraído (sem as chaves).
-- Se NÃO constar, mantenha exatamente a variável entre chaves duplas, ex.: {{NOME_CONSUMIDOR}}.
-- NUNCA invente números de protocolo, nomes, datas, IDs ou valores que não estejam no documento.
-- A seção Análise é o parecer jurídico: cite cláusulas dos T&C da Keeta (Customer, Rider ou Merchant) que amparem a posição da Keeta sobre reembolso/penalidade, e o CDC aplicável.
-- Nunca inclua texto fora do JSON.`;
+Foco de cada campo:
+- "resumoExecutivo": descreva claramente QUAIS DADOS o advogado/juiz/órgão quer extrair da operação (ex.: histórico do entregador X, logs de geolocalização, dados cadastrais, registros de pedido), em 2-4 frases.
+- "clausulaAplicavel": os T&Cs de privacidade, LGPD (Lei 13.709/2018) ou intermediação de tecnologia que definem a posição da Keeta perante a requisição — cite cláusulas na letra quando os textos oficiais forem fornecidos.
+- "templateSugerido": minuta de resposta jurídica/subsídio, seguindo EXATAMENTE o padrão abaixo.
+
+${CONTRATO_JSON}
+
+### PADRÃO OBRIGATÓRIO DO templateSugerido (mantenha as seções e títulos na ordem exata):
+
+RESUMO EXECUTIVO DO CASO – REQUISIÇÃO DE SUBSÍDIO
+Protocolo/Processo: <número se constar no documento, senão {{PROTOCOLO}}>
+Prazo: <prazo de resposta se constar, senão {{PRAZO}}>
+Solicitante: <advogado/órgão/juízo se constar, senão {{SOLICITANTE}}>
+Referência: <ID do pedido/entregador/estabelecimento citado, se constar, senão {{REFERENCIA}}>
+Objeto: <o que foi requisitado, em 1 frase>
+
+DADOS SOLICITADOS
+<lista numerada dos dados/documents requisitados, traduzidos do juridiquês>
+
+ANÁLISE E FUNDAMENTOS
+<parecer com os T&C de privacidade, LGPD e intermediação de tecnologia aplicáveis à requisição, indicando o que a operação consegue fornecer e eventuais ressalvas legais>
+
+STATUS ATUAL
+<status atual, ex.: Aguardando compilação dos dados pela operação>
+${REGRAS_SAIDA}`;
 
     const userPrompt = `TIPO DE MANIFESTAÇÃO: ${
-      tipo === 'procon' ? 'Reclamação Procon (manifestação fiscalizada, com prazo legal de resposta)' : 'Requisição de Subsídio'
+      tipo === 'procon'
+        ? 'Reclamação Procon (manifestação fiscalizada, com prazo legal de resposta)'
+        : 'Requisição de Subsídio (ofício judicial ou extrajudicial)'
     }
 
 CONTEÚDO DA MANIFESTAÇÃO:
