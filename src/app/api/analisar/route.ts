@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
+import { PDFParse } from 'pdf-parse';
 
 /**
  * POST /api/analisar
  *
- * Recebe { tipo: 'procon' | 'subsidio', conteudo: string } e devolve
- * JSON estruturado com:
- *   - resumoExecutivo: síntese da manifestação do consumidor
- *   - clausulaAplicavel: cláusula dos Termos e Condições que rege o caso
+ * Corpo: JSON { tipo: 'procon' | 'subsidio', conteudo: string }
+ *         — ou multipart/form-data { tipo, arquivos: File[] } (PDFs atendimento_cip_*)
+ *
+ * Devolve JSON estruturado com:
+ *   - resumoExecutivo: síntese factual da manifestação do consumidor
+ *   - clausulaAplicavel: cláusula dos T&C aplicável ao caso (CDC)
  *   - templateSugerido: minuta de resposta com variáveis {{VARIAVEL}}
  *
  * Modelo: gemini-2.5-flash (@google/genai oficial).
@@ -15,10 +18,53 @@ import { GoogleGenAI } from '@google/genai';
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as { tipo?: string; conteudo?: string };
+    const contentType = req.headers.get('content-type') ?? '';
 
-    const tipo = body.tipo === 'procon' || body.tipo === 'subsidio' ? body.tipo : null;
-    const conteudo = body.conteudo?.trim();
+    let tipo: string | null = null;
+    let conteudo = '';
+
+    if (contentType.includes('multipart/form-data')) {
+      // Fluxo Procon: PDFs enviados via FormData
+      const formData = await req.formData();
+      tipo = formData.get('tipo') === 'procon' ? 'procon' : null;
+      const files = formData.getAll('arquivos') as File[];
+
+      if (files.length === 0) {
+        return NextResponse.json(
+          { error: 'Nenhum arquivo recebido.' },
+          { status: 400 }
+        );
+      }
+
+      const invalid = files.filter(
+        (f) => !f.name.toLowerCase().startsWith('atendimento_cip_')
+      );
+      if (invalid.length > 0) {
+        return NextResponse.json(
+          { error: `Nomenclatura inválida: ${invalid.map((f) => f.name).join(', ')}` },
+          { status: 422 }
+        );
+      }
+
+      // Extrai o texto de cada PDF no servidor
+      const textos: string[] = [];
+      for (const f of files) {
+        const buf = Buffer.from(await f.arrayBuffer());
+        const parser = new PDFParse({ data: buf });
+        try {
+          const result = await parser.getText();
+          textos.push(`--- ${f.name} ---\n${result.text ?? ''}`);
+        } finally {
+          await parser.destroy();
+        }
+      }
+      conteudo = textos.join('\n\n').trim();
+    } else {
+      // Fluxo Subsídio: JSON com texto puro
+      const body = (await req.json()) as { tipo?: string; conteudo?: string };
+      tipo = body.tipo === 'procon' || body.tipo === 'subsidio' ? body.tipo : null;
+      conteudo = body.conteudo?.trim() ?? '';
+    }
 
     if (!tipo) {
       return NextResponse.json(
@@ -26,7 +72,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (!conteudo || conteudo.length < 20) {
+    if (conteudo.length < 20) {
       return NextResponse.json(
         { error: 'Conteúdo ausente ou muito curto para análise (mín. 20 caracteres).' },
         { status: 400 }
@@ -58,11 +104,13 @@ Regras:
 - Se a informação necessária não estiver presente, use a variável correspondente no template.
 - Nunca inclua texto fora do JSON.`;
 
-    const userPrompt = `TIPO DE MANIFESTAÇÃO: ${tipo === 'procon' ? 'Reclamação Procon' : 'Requisição de Subsídio'}
+    const userPrompt = `TIPO DE MANIFESTAÇÃO: ${
+      tipo === 'procon' ? 'Reclamação Procon (manifestação fiscalizada, com prazo legal de resposta)' : 'Requisição de Subsídio'
+    }
 
 CONTEÚDO DA MANIFESTAÇÃO:
 """
-${conteudo}
+${conteudo.slice(0, 30000)}
 """`;
 
     const response = await ai.models.generateContent({

@@ -53,15 +53,27 @@ export default function ProconFlow({
   const handleAnalysis = useCallback(async () => {
     if (files.length === 0) return;
     setIsProcessing(true);
+    setError(null);
     try {
       const formData = new FormData();
-      files.forEach((f) => formData.append('files', f));
-      const res = await fetch('/api/analyze-procon', { method: 'POST', body: formData });
-      if (!res.ok) throw new Error(`Falha na análise (${res.status})`);
-      const data = await res.json();
+      formData.append('tipo', 'procon');
+      files.forEach((f) => formData.append('arquivos', f));
+      const res = await fetch('/api/analisar', { method: 'POST', body: formData });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? `Falha na análise (${res.status})`);
+      }
+      const data = (await res.json()) as {
+        resumoExecutivo: string;
+        clausulaAplicavel: string;
+        templateSugerido: string;
+      };
       onAnalysisComplete({
-        extracted: data.extracted ?? {},
-        templateText: data.templateText ?? '',
+        extracted: {
+          RESUMO_EXECUTIVO: data.resumoExecutivo,
+          CLAUSULA_APLICAVEL: data.clausulaAplicavel,
+        },
+        templateText: data.templateSugerido,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro inesperado na análise.');
