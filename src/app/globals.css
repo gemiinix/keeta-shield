@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== Keeta Shield — estilos globais ===== */
+
+::selection {
+  background-color: rgba(25, 179, 148, 0.4); /* keeta-teal */
+}
+
+/* Scrollbar discreta no tema escuro */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent; /* zinc-700 */
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: #3f3f46;
+  border-radius: 9999px;
+}
+
+/* Token de variável interpolada no editor de templates */
+.template-variable {
+  @apply rounded bg-keeta-yellow/15 px-1 py-0.5 font-mono text-[0.85em] text-keeta-yellow-dark;
+}
