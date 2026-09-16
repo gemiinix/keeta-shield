@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
-import { PDFParse } from 'pdf-parse';
 
 /**
  * POST /api/analisar
@@ -15,6 +13,10 @@ import { PDFParse } from 'pdf-parse';
  *
  * Modelo: gemini-2.5-flash (@google/genai oficial).
  * Requer GEMINI_API_KEY nas variáveis de ambiente.
+ *
+ * Nota: @google/genai e pdf-parse são importados dinamicamente (lazy) dentro do
+ * handler — evita crash no boot do módulo no runtime serverless (Vercel) e
+ * garante que qualquer falha de import caia no try/catch com erro legível.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -47,6 +49,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Extrai o texto de cada PDF no servidor
+      const { PDFParse } = await import('pdf-parse');
       const textos: string[] = [];
       for (const f of files) {
         const buf = Buffer.from(await f.arrayBuffer());
@@ -87,6 +90,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const { GoogleGenAI } = await import('@google/genai');
     const ai = new GoogleGenAI({ apiKey });
 
     const systemPrompt = `Você é um analista jurídico sênior especializado em direito do consumidor (CDC), atuação em Procon e subsídios de plataformas de delivery.
