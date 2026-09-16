@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MOTIVOS_PROCON } from '@/constants/motivos';
 import { calculateKeetaBusinessDeadline, isoParaBR } from '@/lib/prazo';
 import type { CrmSnapshot } from '@/lib/types';
@@ -25,6 +25,8 @@ type Props = {
   snapshot?: CrmSnapshot | null;
   /** ID do caso no histórico — habilita salvar/atualizar o formulário. */
   casoId?: number | null;
+  /** Reporta o TMO ao vivo (segundos) ao dashboard — alimenta o badge MM:SS. */
+  onTmoChange?: (segundos: number) => void;
 };
 
 const SIM_NAO = ['Sim', 'Não'] as const;
@@ -82,7 +84,7 @@ function ActionButton({
   );
 }
 
-export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot: snapshotSalvo, casoId }: Props) {
+export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot: snapshotSalvo, casoId, onTmoChange }: Props) {
   // ── Campos pré-preenchidos pela IA (editáveis; snapshot repõe os salvos) ──
   const saved = snapshotSalvo?.campos ?? {};
   const [salvando, setSalvando] = useState(false);
@@ -127,6 +129,28 @@ export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot
   // 'Salvar no histórico'. Reabrir um caso pelo Histórico não reconta: o TMO
   // de um caso é o tempo até a primeira conclusão — registro único.
   const inicioRef = useRef(Date.now());
+
+  // ── Cronômetro ao vivo (MM:SS) ──
+  // Exibido no cabeçalho do formulário. Para no primeiro salvamento
+  // (o TMO congelado é o valor enviado); reaberturas mostram o TMO salvo.
+  const tmoRegistrado = snapshotSalvo?.tmoSegundos ?? null;
+  const [tmoAoVivo, setTmoAoVivo] = useState(() =>
+    tmoRegistrado != null ? tmoRegistrado : Math.floor((Date.now() - inicioRef.current) / 1000)
+  );
+  const cronometroAtivo = tmoRegistrado == null;
+  useEffect(() => {
+    if (!cronometroAtivo) return;
+    const id = window.setInterval(() => {
+      setTmoAoVivo(Math.floor((Date.now() - inicioRef.current) / 1000));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [cronometroAtivo]);
+  const tmoExibicao = cronometroAtivo ? tmoAoVivo : (tmoRegistrado ?? 0);
+  const tmoLabel = `${String(Math.floor(tmoExibicao / 60)).padStart(2, '0')}:${String(tmoExibicao % 60).padStart(2, '0')}`;
+  // Reporta o valor exibido (ao vivo ou congelado) ao dashboard — badge MM:SS
+  useEffect(() => {
+    onTmoChange?.(tmoExibicao);
+  }, [tmoExibicao, onTmoChange]);
 
   // ── Prazo de processo administrativo: 10 dias úteis a partir de HOJE ──
   // Mesma regra utilitária do backend (prazo.ts) — cálculo no cliente.
@@ -524,6 +548,19 @@ export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot
               {salvando ? 'Salvando…' : 'Salvar no histórico'}
             </ActionButton>
           ) : null}
+          <span
+            className="inline-flex items-center gap-1.5 rounded-md border border-keeta-teal/40 bg-keeta-teal/10 px-2.5 py-1.5 font-mono text-sm font-bold tabular-nums text-keeta-teal-dark"
+            title={
+              cronometroAtivo
+                ? 'TMO correndo — congela no primeiro salvamento'
+                : 'TMO congelado no primeiro salvamento deste caso'
+            }
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            {tmoLabel}
+          </span>
           <ActionButton variant="ghost" onClick={onOpenTemplate}>
             Abrir minuta no editor
           </ActionButton>

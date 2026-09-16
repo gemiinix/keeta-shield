@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Bars3Icon } from '@heroicons/react/24/outline';
+import { Bars3Icon, ClockIcon } from '@heroicons/react/24/outline';
 import ProconFlow from '@/components/flows/ProconFlow';
 import SubsidioFlow from '@/components/flows/SubsidioFlow';
 import TemplateEditor from '@/components/editor/TemplateEditor';
@@ -64,11 +64,15 @@ export default function MainDashboard({
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   // Modo pós-análise Procon: 'crm' (formulário) | 'editor' (minuta)
   const [posAnalise, setPosAnalise] = useState<'crm' | 'editor'>('crm');
+  // Cronômetro do caso (TMO ao vivo) — reportado pelo CrmForm a cada segundo
+  const [tmoAoVivo, setTmoAoVivo] = useState(0);
+  const tmoBadge = `${String(Math.floor(tmoAoVivo / 60)).padStart(2, '0')}:${String(tmoAoVivo % 60).padStart(2, '0')}`;
 
   const abrirResultado = (r: AnalysisResult | null) => {
     setAnalysisResult(r);
     // Procon com dados de CRM → começa no formulário; Subsídio → direto no editor
     setPosAnalise(r?.crm ? 'crm' : 'editor');
+    setTmoAoVivo(0);
   };
 
   // Fluxo de processamento concluído → exibe o CRM (Procon) ou TemplateEditor,
@@ -81,13 +85,25 @@ export default function MainDashboard({
         {analysisResult.crm && posAnalise === 'crm' ? (
           <div className="mx-auto w-full max-w-6xl px-5 py-8 pl-16 lg:px-10 lg:pl-10">
             <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="font-display text-lg font-bold uppercase tracking-tight text-ink">
-                  Formulário de CRM — Caso Procon
-                </h2>
-                <p className="mt-0.5 text-sm font-medium text-keeta-teal-dark">
-                  Campos da IA pré-preenchidos; complete os manuais.
-                </p>
+              <div className="flex items-center gap-4">
+                <div>
+                  <h2 className="font-display text-lg font-bold uppercase tracking-tight text-ink">
+                    Formulário de CRM — Caso Procon
+                  </h2>
+                  <p className="mt-0.5 text-sm font-medium text-keeta-teal-dark">
+                    Campos da IA pré-preenchidos; complete os manuais.
+                  </p>
+                </div>
+                {/* Cronômetro do caso — TMO ao vivo (MM:SS) */}
+                <div
+                  className="flex items-center gap-2 rounded-lg border border-keeta-teal/40 bg-keeta-teal/10 px-3 py-1.5"
+                  title="Tempo Médio de Operação — tempo até o primeiro salvamento do caso"
+                >
+                  <ClockIcon className="h-4 w-4 text-keeta-teal-dark" />
+                  <span className="font-mono text-lg font-bold tabular-nums text-keeta-teal-dark">
+                    {tmoBadge}
+                  </span>
+                </div>
               </div>
               <button
                 onClick={() => setAnalysisResult(null)}
@@ -102,6 +118,7 @@ export default function MainDashboard({
               snapshot={analysisResult.crm.snapshot}
               casoId={analysisResult.casoId}
               onOpenTemplate={() => setPosAnalise('editor')}
+              onTmoChange={setTmoAoVivo}
             />
           </div>
         ) : (

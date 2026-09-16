@@ -1,8 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ClockIcon } from '@heroicons/react/24/outline';
 import type { HistoricoEntry, CrmSnapshot } from '@/lib/types';
 import { interpolate } from '@/components/editor/TemplateEditor';
+
+/** Segundos → MM:SS (ex.: 125 → "02:05"). */
+function tmoFmtDetalhe(seg: number) {
+  const m = Math.floor(seg / 60);
+  const s = seg % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
 
 type FiltroTipo = 'todos' | 'procon' | 'subsidio';
 
@@ -455,6 +463,32 @@ function ExpandableRow({
                 <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-ink/70">
                   {e.clausula}
                 </p>
+                {e.dadosCrm && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {e.dadosCrm.tmoSegundos != null && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded border border-keeta-teal/40 bg-keeta-teal/10 px-2 py-0.5 font-mono text-[11px] font-bold tabular-nums text-keeta-teal-dark"
+                        title="Tempo Total de Tratativa (TMO) — tempo até o primeiro salvamento do caso"
+                      >
+                        <ClockIcon className="h-3 w-3" />
+                        TMO {tmoFmtDetalhe(e.dadosCrm.tmoSegundos)}
+                      </span>
+                    )}
+                    {e.dadosCrm.campos?.motivo && (
+                      <span
+                        className="max-w-[260px] truncate rounded border border-line bg-white px-2 py-0.5 text-[11px] font-semibold text-ink/70"
+                        title={e.dadosCrm.campos.motivo}
+                      >
+                        {e.dadosCrm.campos.motivo}
+                      </span>
+                    )}
+                    {e.dadosCrm.dadosIA?.cipProcon && (
+                      <span className="rounded border border-line bg-white px-2 py-0.5 font-mono text-[11px] text-ink/70">
+                        CIP {e.dadosCrm.dadosIA.cipProcon}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <h4 className="font-display text-[10px] font-bold uppercase tracking-wider text-keeta-teal-dark">
