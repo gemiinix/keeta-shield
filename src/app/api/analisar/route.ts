@@ -12,7 +12,7 @@ import ensureCanvasPolyfills from '@/lib/canvas-polyfill';
  *   - clausulaAplicavel: cláusula dos T&C aplicável ao caso (CDC)
  *   - templateSugerido: minuta de resposta com variáveis {{VARIAVEL}}
  *
- * Modelo: gemini-2.5-flash (@google/genai oficial).
+ * Modelo: gemini-3.6-flash (@google/genai oficial).
  * Requer GEMINI_API_KEY nas variáveis de ambiente.
  *
  * Nota: @google/genai e pdf-parse são importados dinamicamente (lazy) dentro do
@@ -122,7 +122,7 @@ ${conteudo.slice(0, 30000)}
 """`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
       contents: userPrompt,
       config: {
         systemInstruction: systemPrompt,
