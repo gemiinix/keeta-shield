@@ -276,7 +276,10 @@ export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot
       )}
 
       {/* Formulário em grid 2 colunas (3 em monitores largos) */}
-      <form className="grid grid-cols-1 gap-x-6 gap-y-5 md:grid-cols-2 xl:grid-cols-3">
+      <form
+        className="grid grid-cols-1 gap-x-6 gap-y-5 md:grid-cols-2 xl:grid-cols-3"
+        onSubmit={(e) => e.preventDefault()}
+      >
         {/* ── Seção: dados do caso (IA) ── */}
         <Field label="Data abertura">
           <input
@@ -540,14 +543,14 @@ export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot
 
         <div className="flex flex-wrap items-center gap-3 md:col-span-2 xl:col-span-3">
           {casoId ? (
-            <ActionButton onClick={salvarFormulario}>
+            <ActionButton type="button" onClick={salvarFormulario}>
               {salvando ? 'Salvando…' : 'Salvar no histórico'}
             </ActionButton>
           ) : null}
-          <ActionButton variant="ghost" onClick={onOpenTemplate}>
+          <ActionButton variant="ghost" type="button" onClick={onOpenTemplate}>
             Abrir minuta no editor
           </ActionButton>
-          <ActionButton variant="ghost" onClick={limparCamposManuais}>
+          <ActionButton variant="ghost" type="button" onClick={limparCamposManuais}>
             Limpar campos manuais
           </ActionButton>
         </div>
