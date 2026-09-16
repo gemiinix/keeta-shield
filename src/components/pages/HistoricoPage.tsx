@@ -8,8 +8,10 @@ type FiltroTipo = 'todos' | 'procon' | 'subsidio';
 
 export default function HistoricoPage({
   onOpenAnalysis,
+  onNavigateToEditor,
 }: {
   onOpenAnalysis: (r: { extracted: Record<string, string>; templateText: string }) => void;
+  onNavigateToEditor: () => void;
 }) {
   const [entries, setEntries] = useState<HistoricoEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -17,6 +19,9 @@ export default function HistoricoPage({
   const [expanded, setExpanded] = useState<number | null>(null);
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>('todos');
   const [busca, setBusca] = useState<string>('');
+  const [selecionados, setSelecionados] = useState<Set<number>>(new Set());
+  const [removendo, setRemovendo] = useState(false);
+  const [confirmarLimpar, setConfirmarLimpar] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,6 +54,93 @@ export default function HistoricoPage({
       return true;
     });
   }, [entries, filtroTipo, busca]);
+
+  const toggleSelecionado = (id: number) => {
+    setSelecionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const todosVisiveisSelecionados =
+    filtradas.length > 0 && filtradas.every((e) => selecionados.has(e.id));
+
+  const alternarTodos = () => {
+    setSelecionados((prev) => {
+      if (filtradas.every((e) => prev.has(e.id))) {
+        return new Set();
+      }
+      return new Set(filtradas.map((e) => e.id));
+    });
+  };
+
+  const excluirSelecionados = async () => {
+    if (selecionados.size === 0 || removendo) return;
+    setRemovendo(true);
+    setError(null);
+    try {
+      const ids = [...selecionados].join(',');
+      const res = await fetch(`/api/historico?ids=${ids}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? 'Falha ao excluir registros.');
+      }
+      setSelecionados(new Set());
+      setExpanded(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro inesperado.');
+    } finally {
+      setRemovendo(false);
+    }
+  };
+
+  const excluirUm = async (id: number) => {
+    if (removendo) return;
+    setRemovendo(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/historico?id=${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? 'Falha ao excluir registro.');
+      }
+      setSelecionados((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      if (expanded === id) setExpanded(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro inesperado.');
+    } finally {
+      setRemovendo(false);
+    }
+  };
+
+  const limparTudo = async () => {
+    if (removendo) return;
+    setRemovendo(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/historico?all=true', { method: 'DELETE' });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? 'Falha ao limpar histórico.');
+      }
+      setSelecionados(new Set());
+      setExpanded(null);
+      setConfirmarLimpar(false);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro inesperado.');
+    } finally {
+      setRemovendo(false);
+    }
+  };
 
   if (loading) {
     return <p className="mt-8 text-sm text-ink/50">Carregando histórico…</p>;
@@ -113,6 +205,46 @@ export default function HistoricoPage({
         <span className="text-xs text-ink/45">
           {filtradas.length} de {entries.length} registros
         </span>
+
+        {/* Ações de exclusão em massa */}
+        <div className="ml-auto flex items-center gap-2">
+          {selecionados.size > 0 && (
+            <button
+              onClick={excluirSelecionados}
+              disabled={removendo}
+              className="rounded-lg border border-danger-red bg-white px-3 py-2 text-xs font-bold text-danger-red transition-colors duration-150 hover:bg-danger-bg disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              excluir {selecionados.size === 1 ? '1 registro' : `${selecionados.size} registros`}
+            </button>
+          )}
+          {confirmarLimpar ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-danger-red">limpar TODO o histórico?</span>
+              <button
+                onClick={limparTudo}
+                disabled={removendo}
+                className="rounded-lg bg-danger-red px-3 py-2 text-xs font-bold text-white transition-colors duration-150 disabled:opacity-50"
+              >
+                confirmar
+              </button>
+              <button
+                onClick={() => setConfirmarLimpar(false)}
+                disabled={removendo}
+                className="rounded-lg border border-line bg-white px-3 py-2 text-xs font-semibold text-ink/60 transition-colors duration-150 hover:bg-surface"
+              >
+                cancelar
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmarLimpar(true)}
+              disabled={removendo || entries.length === 0}
+              className="rounded-lg border border-line bg-white px-3 py-2 text-xs font-semibold text-ink/55 transition-colors duration-150 hover:border-danger-red hover:text-danger-red disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              limpar tudo
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tabela densa e escaneável */}
@@ -126,6 +258,15 @@ export default function HistoricoPage({
             <caption className="sr-only">Histórico de análises</caption>
             <thead>
               <tr className="border-b border-line bg-surface text-[11px] font-bold uppercase tracking-wider text-ink/55">
+                <th scope="col" className="w-10 px-4 py-2.5">
+                  <input
+                    type="checkbox"
+                    checked={todosVisiveisSelecionados}
+                    onChange={alternarTodos}
+                    aria-label="Selecionar todos os registros visíveis"
+                    className="size-4 cursor-pointer accent-ink"
+                  />
+                </th>
                 <th scope="col" className="px-4 py-2.5">Data</th>
                 <th scope="col" className="px-4 py-2.5">Tipo</th>
                 <th scope="col" className="px-4 py-2.5">Resumo</th>
@@ -138,8 +279,13 @@ export default function HistoricoPage({
                   key={e.id}
                   entry={e}
                   expanded={expanded === e.id}
+                  selecionado={selecionados.has(e.id)}
                   onToggle={() => setExpanded(expanded === e.id ? null : e.id)}
                   onOpenAnalysis={onOpenAnalysis}
+                  onNavigateToEditor={onNavigateToEditor}
+                  onToggleSelecionado={() => toggleSelecionado(e.id)}
+                  onExcluir={() => excluirUm(e.id)}
+                  removendo={removendo}
                 />
               ))}
             </tbody>
@@ -154,20 +300,50 @@ export default function HistoricoPage({
 function ExpandableRow({
   entry: e,
   expanded,
+  selecionado,
   onToggle,
   onOpenAnalysis,
+  onNavigateToEditor,
+  onToggleSelecionado,
+  onExcluir,
+  removendo,
 }: {
   entry: HistoricoEntry;
   expanded: boolean;
+  selecionado: boolean;
   onToggle: () => void;
   onOpenAnalysis: (r: {
     extracted: Record<string, string>;
     templateText: string;
   }) => void;
+  onNavigateToEditor: () => void;
+  onToggleSelecionado: () => void;
+  onExcluir: () => void;
+  removendo: boolean;
 }) {
+  const abrirNoEditor = () => {
+    onOpenAnalysis({
+      extracted: {
+        RESUMO_EXECUTIVO: e.resumo,
+        CLAUSULA_APLICAVEL: e.clausula,
+      },
+      templateText: e.templateGerado,
+    });
+    onNavigateToEditor();
+  };
+
   return (
     <>
-      <tr className="align-top transition-colors duration-150 hover:bg-surface/60">
+      <tr className={`align-top transition-colors duration-150 hover:bg-surface/60 ${selecionado ? 'bg-surface' : ''}`}>
+        <td className="px-4 py-3">
+          <input
+            type="checkbox"
+            checked={selecionado}
+            onChange={onToggleSelecionado}
+            aria-label={`Selecionar registro de ${new Date(e.criadoEm).toLocaleDateString('pt-BR')}`}
+            className="size-4 cursor-pointer accent-ink"
+          />
+        </td>
         <td className="whitespace-nowrap px-4 py-3 text-xs text-ink/60">
           {new Date(e.criadoEm).toLocaleDateString('pt-BR')}
           <span className="block text-[10px] text-ink/40">
@@ -203,25 +379,26 @@ function ExpandableRow({
               {expanded ? 'recolher' : 'detalhes'}
             </button>
             <button
-              onClick={() =>
-                onOpenAnalysis({
-                  extracted: {
-                    RESUMO_EXECUTIVO: e.resumo,
-                    CLAUSULA_APLICAVEL: e.clausula,
-                  },
-                  templateText: e.templateGerado,
-                })
-              }
+              onClick={abrirNoEditor}
               className="rounded bg-ink px-2.5 py-1 text-xs font-bold text-white transition-colors duration-150 hover:bg-keeta-teal-dark"
             >
               abrir no editor
+            </button>
+            <button
+              onClick={onExcluir}
+              disabled={removendo}
+              title="Excluir este registro"
+              aria-label="Excluir este registro"
+              className="rounded px-2 py-1 text-xs font-semibold text-ink/40 transition-colors duration-150 hover:bg-danger-bg hover:text-danger-red disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              excluir
             </button>
           </div>
         </td>
       </tr>
       {expanded && (
         <tr className="bg-surface/50">
-          <td colSpan={4} className="border-b border-line px-4 py-4">
+          <td colSpan={5} className="border-b border-line px-4 py-4">
             <div className="grid gap-6 md:grid-cols-2">
               <div>
                 <h4 className="font-display text-[10px] font-bold uppercase tracking-wider text-keeta-teal-dark">

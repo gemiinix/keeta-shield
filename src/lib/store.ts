@@ -19,6 +19,9 @@ interface Store {
   saveHistorico(
     e: Omit<HistoricoEntry, 'id' | 'criadoEm'>
   ): Promise<HistoricoEntry>;
+  deleteHistorico(id: number): Promise<void>;
+  deleteHistoricoBulk(ids: number[]): Promise<number>;
+  clearHistorico(): Promise<number>;
 
   listTemplates(): Promise<Template[]>;
   getTemplatePadrao(): Promise<Template | null>;
@@ -53,6 +56,15 @@ export const store = {
   },
   async saveHistorico(e: Omit<HistoricoEntry, 'id' | 'criadoEm'>) {
     return (await getStore()).saveHistorico(e);
+  },
+  async deleteHistorico(id: number) {
+    return (await getStore()).deleteHistorico(id);
+  },
+  async deleteHistoricoBulk(ids: number[]) {
+    return (await getStore()).deleteHistoricoBulk(ids);
+  },
+  async clearHistorico() {
+    return (await getStore()).clearHistorico();
   },
   async listTemplates() {
     return (await getStore()).listTemplates();
@@ -149,6 +161,25 @@ function createPostgresStore(): Store {
         values (${e.tipo}, ${e.origem}, ${e.resumo}, ${e.clausula}, ${e.templateGerado}, ${e.conteudoHash})
         returning id, tipo, origem, resumo, clausula, template_gerado, conteudo_hash, criado_em`;
       return mapHistorico(rows[0]);
+    },
+
+    async deleteHistorico(id: number) {
+      const sql = await getSql();
+      await sql`delete from historico where id = ${id}`;
+    },
+
+    async deleteHistoricoBulk(ids: number[]) {
+      if (ids.length === 0) return 0;
+      const sql = await getSql();
+      const rows = await sql`
+        delete from historico where id = any(${ids}) returning id`;
+      return rows.length;
+    },
+
+    async clearHistorico() {
+      const sql = await getSql();
+      const rows = await sql`delete from historico returning id`;
+      return rows.length;
     },
 
     async listTemplates() {
@@ -271,6 +302,22 @@ function createMemoryStore(): Store {
       const entry: HistoricoEntry = { ...e, id: nextId++, criadoEm: new Date().toISOString() };
       historico.push(entry);
       return entry;
+    },
+    async deleteHistorico(id: number) {
+      const i = historico.findIndex((h) => h.id === id);
+      if (i >= 0) historico.splice(i, 1);
+    },
+    async deleteHistoricoBulk(ids: number[]) {
+      const alvo = new Set(ids);
+      for (let i = historico.length - 1; i >= 0; i--) {
+        if (alvo.has(historico[i].id)) historico.splice(i, 1);
+      }
+      return alvo.size;
+    },
+    async clearHistorico() {
+      const n = historico.length;
+      historico.length = 0;
+      return n;
     },
     async listTemplates() {
       return [...templates].reverse();

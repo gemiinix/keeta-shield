@@ -86,7 +86,12 @@ export default function MainDashboard({
 
       {/* Área de trabalho */}
       <div className="min-w-0 flex-1 overflow-y-auto px-5 py-8 pl-16 lg:px-10 lg:pl-10">
-        {activeNav === 'historico' && <HistoricoPage onOpenAnalysis={setAnalysisResult} />}
+        {activeNav === 'historico' && (
+        <HistoricoPage
+          onOpenAnalysis={setAnalysisResult}
+          onNavigateToEditor={() => onNavigate('nova-analise')}
+        />
+      )}
 
         {activeNav === 'templates' && <TemplatesPage />}
 
