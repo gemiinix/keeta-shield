@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   DocumentPlusIcon,
   ClockIcon,
+  ChartBarIcon,
   Squares2X2Icon,
   BookOpenIcon,
   Bars3Icon,
@@ -15,6 +16,7 @@ import type { NavKey } from '@/app/page';
 const NAV_ITEMS: { key: NavKey; label: string; Icon: typeof DocumentPlusIcon }[] = [
   { key: 'nova-analise', label: 'Nova Análise', Icon: DocumentPlusIcon },
   { key: 'historico', label: 'Histórico', Icon: ClockIcon },
+  { key: 'dashboard', label: 'Dashboard', Icon: ChartBarIcon },
   { key: 'templates', label: 'Templates', Icon: Squares2X2Icon },
   { key: 'termos', label: 'Termos', Icon: BookOpenIcon },
 ];

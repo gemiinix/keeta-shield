@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import MainDashboard from '@/components/dashboard/MainDashboard';
 
-export type NavKey = 'nova-analise' | 'historico' | 'templates' | 'termos';
+export type NavKey = 'nova-analise' | 'historico' | 'dashboard' | 'templates' | 'termos';
 
 /**
  * Página principal do Keeta Shield.

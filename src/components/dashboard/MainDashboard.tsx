@@ -9,6 +9,7 @@ import CrmForm, { type CrmDadosIA } from '@/components/editor/CrmForm';
 import HistoricoPage from '@/components/pages/HistoricoPage';
 import TemplatesPage from '@/components/pages/TemplatesPage';
 import TermosPage from '@/components/pages/TermosPage';
+import DashboardPage from '@/components/pages/DashboardPage';
 import type { NavKey } from '@/app/page';
 import type { CrmSnapshot } from '@/lib/types';
 
@@ -37,6 +38,10 @@ const PAGE_TITLES: Record<NavKey, { title: string; subtitle: string }> = {
   historico: {
     title: 'Histórico',
     subtitle: 'Análises registradas — reabra qualquer uma no editor.',
+  },
+  dashboard: {
+    title: 'Dashboard',
+    subtitle: 'Relatório gerencial mensal — métricas e insights dos casos CRM.',
   },
   templates: {
     title: 'Templates',
@@ -145,6 +150,8 @@ export default function MainDashboard({
           onNavigateToEditor={() => onNavigate('nova-analise')}
         />
       )}
+
+        {activeNav === 'dashboard' && <DashboardPage />}
 
         {activeNav === 'templates' && <TemplatesPage />}
 
