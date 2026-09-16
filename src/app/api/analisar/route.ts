@@ -155,8 +155,17 @@ ${conteudo.slice(0, 30000)}
     });
   } catch (err) {
     console.error('[analisar]', err);
-    const message =
-      err instanceof Error ? err.message : 'Erro inesperado na análise jurídica.';
+
+    // Erros da API do Google chegam como JSON serializado dentro da mensagem —
+    // extraímos a parte legível para não mostrar sopa de JSON ao usuário.
+    let message = err instanceof Error ? err.message : 'Erro inesperado na análise jurídica.';
+    try {
+      const nested = JSON.parse(message) as { error?: { message?: string } };
+      if (nested.error?.message) message = nested.error.message;
+    } catch {
+      // mensagem já é texto legível — segue como está
+    }
+
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
