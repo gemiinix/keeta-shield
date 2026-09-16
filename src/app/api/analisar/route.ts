@@ -178,9 +178,9 @@ export async function POST(req: NextRequest) {
     const termos = await store.listTermos();
     const termosBloco =
       termos.length > 0
-        ? `\n\n### TERMOS E CONDIÇÕES OFICIAIS DA KEETA (texto extraído dos PDFs vigentes — cite cláusulas destes textos, na letra, quando aplicáveis):\n${termos
+        ? `\n\n### BASE DE CONHECIMENTO OFICIAL — TERMOS E CONDIÇÕES DA KEETA (texto vigente extraído dos PDFs):\n${termos
             .map((t) => `--- ${t.documento}${t.versao ? ` (versão ${t.versao})` : ''} ---\n${t.conteudo.slice(0, 15000)}`)
-            .join('\n\n')}`
+            .join('\n\n')}\n\n### DIRECTIVA DE CROSS-REFERENCE CLAUSE MATCHING (obrigatória):\n- Sua análise de cláusulas deve se apoiar ESTRITAMENTE na BASE DE CONHECIMENTO OFICIAL acima — não em conhecimento genérico sobre plataformas de delivery.\n- Quando o assunto envolver REEMBOLSO, ESTORNO, CANCELAMENTO ou DEVOLUÇÃO, você DEVE procurar na base as regras de CANCELAMENTO/ESTORNO aplicáveis e citá-las (número da cláusula e/ou trecho na letra) antes de concluir qualquer parecer.\n- Se a base não contiver regra aplicável ao tema, declare explicitamente que não localizou cláusula específica na base vigente — NUNCA invente cláusula.`
         : '';
 
     // ── systemInstruction bifurcado: Procon e Subsídio são ofícios diferentes ──
