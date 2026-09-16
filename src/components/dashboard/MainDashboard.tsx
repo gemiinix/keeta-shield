@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Bars3Icon, ClockIcon } from '@heroicons/react/24/outline';
 import ProconFlow from '@/components/flows/ProconFlow';
 import SubsidioFlow from '@/components/flows/SubsidioFlow';
@@ -64,15 +64,42 @@ export default function MainDashboard({
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   // Modo pós-análise Procon: 'crm' (formulário) | 'editor' (minuta)
   const [posAnalise, setPosAnalise] = useState<'crm' | 'editor'>('crm');
-  // Cronômetro do caso (TMO ao vivo) — reportado pelo CrmForm a cada segundo
+
+  // ── Cronômetro do caso (TMO ao vivo) ──
+  // De propriedade do MainDashboard: NÃO remonta ao alternar
+  // formulário ↔ minuta, então o tempo total do caso nunca zera.
+  // Início = quando a análise retorna; congela no 1º salvamento.
+  const [inicioCaso, setInicioCaso] = useState<number | null>(null);
+  const [tmoCongelado, setTmoCongelado] = useState<number | null>(null);
   const [tmoAoVivo, setTmoAoVivo] = useState(0);
-  const tmoBadge = `${String(Math.floor(tmoAoVivo / 60)).padStart(2, '0')}:${String(tmoAoVivo % 60).padStart(2, '0')}`;
+  const tmoAtivo =
+    analysisResult?.crm != null && tmoCongelado == null && inicioCaso != null;
+
+  useEffect(() => {
+    if (!tmoAtivo) return;
+    const id = window.setInterval(() => {
+      setTmoAoVivo(Math.floor((Date.now() - (inicioCaso as number)) / 1000));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [tmoAtivo, inicioCaso]);
+
+  const tmoExibido =
+    tmoCongelado != null
+      ? tmoCongelado
+      : analysisResult?.crm?.snapshot?.tmoSegundos != null
+        ? (analysisResult.crm.snapshot.tmoSegundos as number)
+        : tmoAoVivo;
+  const tmoBadge = `${String(Math.floor(tmoExibido / 60)).padStart(2, '0')}:${String(tmoExibido % 60).padStart(2, '0')}`;
 
   const abrirResultado = (r: AnalysisResult | null) => {
     setAnalysisResult(r);
     // Procon com dados de CRM → começa no formulário; Subsídio → direto no editor
     setPosAnalise(r?.crm ? 'crm' : 'editor');
-    setTmoAoVivo(0);
+    // Reinicia o cronômetro: início = agora; TMO salvo do snapshot (reabertura)
+    // é exibido congelado em vez de contar de novo.
+    setInicioCaso(Date.now());
+    setTmoCongelado(r?.crm?.snapshot?.tmoSegundos ?? null);
+    setTmoAoVivo(r?.crm?.snapshot?.tmoSegundos ?? 0);
   };
 
   // Fluxo de processamento concluído → exibe o CRM (Procon) ou TemplateEditor,
@@ -117,14 +144,16 @@ export default function MainDashboard({
               prazoDefesa={analysisResult.crm.prazoDefesa}
               snapshot={analysisResult.crm.snapshot}
               casoId={analysisResult.casoId}
+              inicioCaso={inicioCaso ?? undefined}
               onOpenTemplate={() => setPosAnalise('editor')}
-              onTmoChange={setTmoAoVivo}
+              onTmoFrozen={setTmoCongelado}
             />
           </div>
         ) : (
           <TemplateEditor
             extracted={analysisResult.extracted}
             templateText={analysisResult.templateText}
+            cronometro={analysisResult.crm ? tmoBadge : undefined}
             onClose={() => setAnalysisResult(null)}
             onBackToForm={
               analysisResult.crm

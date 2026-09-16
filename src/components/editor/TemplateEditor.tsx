@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { XMarkIcon, ArrowDownTrayIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, ArrowDownTrayIcon, ArrowLeftIcon, ClockIcon } from '@heroicons/react/24/outline';
 import { PrazoBanner, type PrazoStatus } from '@/components/ui/PrazoBadge';
 
 /**
@@ -73,12 +73,16 @@ export default function TemplateEditor({
   templateText,
   onClose,
   onBackToForm,
+  cronometro,
 }: {
   extracted: Record<string, string>;
   templateText?: string;
   onClose: () => void;
   /** Quando presente (caso Procon), exibe botão de retorno ao CRM. */
   onBackToForm?: () => void;
+  /** Badge do cronômetro do caso (MM:SS), de propriedade do MainDashboard —
+   *  mantém o TMO visível enquanto o usuário redige a minuta. */
+  cronometro?: string;
 }) {
   const [edited, setEdited] = useState(templateText || PLACEHOLDER_TEMPLATE);
 
@@ -107,13 +111,26 @@ export default function TemplateEditor({
     <div className="flex h-full flex-col bg-white">
       {/* Barra superior */}
       <header className="flex h-[72px] shrink-0 items-center justify-between border-b border-line bg-white px-5 pl-16 lg:px-8 lg:pl-8">
-        <div>
-          <h2 className="font-display text-lg font-bold uppercase tracking-tight text-ink">
-            Editor de Resposta
-          </h2>
-          <p className="text-xs font-medium text-keeta-teal-dark">
-            {variables.length} variáveis · dados extraídos com IA
-          </p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h2 className="font-display text-lg font-bold uppercase tracking-tight text-ink">
+              Editor de Resposta
+            </h2>
+            <p className="text-xs font-medium text-keeta-teal-dark">
+              {variables.length} variáveis · dados extraídos com IA
+            </p>
+          </div>
+          {cronometro && (
+            <div
+              className="flex items-center gap-2 rounded-lg border border-keeta-teal/40 bg-keeta-teal/10 px-3 py-1.5"
+              title="Tempo Médio de Operação — tempo total do caso; congela no primeiro salvamento do formulário"
+            >
+              <ClockIcon className="h-4 w-4 text-keeta-teal-dark" />
+              <span className="font-mono text-lg font-bold tabular-nums text-keeta-teal-dark">
+                {cronometro}
+              </span>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {onBackToForm && (
