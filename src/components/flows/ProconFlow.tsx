@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { DocumentArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import type { CrmSnapshot } from '@/lib/types';
 
 const REQUIRED_PREFIX = 'atendimento_cip_';
 const ACCEPTED_MIME = 'application/pdf';
@@ -31,6 +32,7 @@ export default function ProconFlow({
         deadlineFinalISO: string;
         diasRestantes: number;
       } | null;
+      snapshot?: CrmSnapshot | null;
     };
   }) => void;
 }) {
@@ -86,6 +88,7 @@ export default function ProconFlow({
         clausulaAplicavel: string;
         templateSugerido: string;
         casoId?: number;
+        cache?: boolean;
         prazoDefesa?: {
           dataAberturaISO: string;
           deadlineFinalISO: string;
@@ -97,6 +100,7 @@ export default function ProconFlow({
           mcdonalds: boolean;
           motivoClassificado: string;
         };
+        dadosCrm?: CrmSnapshot;
       };
 
       // Transmissão do prazo dentro de `extracted` (contrato de props):
@@ -123,9 +127,10 @@ export default function ProconFlow({
         templateText: data.templateSugerido,
         casoId: data.casoId ?? null,
         crm:
-          data.dadosFormulario || data.prazoDefesa
+          data.dadosFormulario || data.prazoDefesa || data.dadosCrm
             ? {
                 dadosIA:
+                  data.dadosCrm?.dadosIA ??
                   data.dadosFormulario ??
                   {
                     cipProcon: '',
@@ -133,7 +138,8 @@ export default function ProconFlow({
                     mcdonalds: false,
                     motivoClassificado: '',
                   },
-                prazoDefesa: data.prazoDefesa ?? null,
+                prazoDefesa: data.dadosCrm?.prazoDefesa ?? data.prazoDefesa ?? null,
+                snapshot: data.dadosCrm?.campos ? data.dadosCrm : null,
               }
             : undefined,
       });

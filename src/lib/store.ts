@@ -171,9 +171,9 @@ function createPostgresStore(): Store {
     async saveHistorico(e) {
       const sql = await getSql();
       const rows = await sql`
-        insert into historico (tipo, origem, resumo, clausula, template_gerado, conteudo_hash)
-        values (${e.tipo}, ${e.origem}, ${e.resumo}, ${e.clausula}, ${e.templateGerado}, ${e.conteudoHash})
-        returning id, tipo, origem, resumo, clausula, template_gerado, conteudo_hash, criado_em`;
+        insert into historico (tipo, origem, resumo, clausula, template_gerado, conteudo_hash, dados_crm)
+        values (${e.tipo}, ${e.origem}, ${e.resumo}, ${e.clausula}, ${e.templateGerado}, ${e.conteudoHash}, ${e.dadosCrm ? JSON.stringify(e.dadosCrm) : null})
+        returning id, tipo, origem, resumo, clausula, template_gerado, conteudo_hash, criado_em, dados_crm`;
       return mapHistorico(rows[0]);
     },
 

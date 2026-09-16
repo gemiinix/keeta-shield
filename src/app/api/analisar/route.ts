@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import ensureCanvasPolyfills from '@/lib/canvas-polyfill';
 import type { GenerateContentResponse } from '@google/genai';
 import { store } from '@/lib/store';
-import type { TipoAnalise } from '@/lib/types';
+import type { TipoAnalise, CrmSnapshot } from '@/lib/types';
 import { calculateKeetaBusinessDeadline, isoParaBR } from '@/lib/prazo';
 import { MOTIVOS_PROCON } from '@/constants/motivos';
 
@@ -186,15 +186,21 @@ export async function POST(req: NextRequest) {
       .digest('hex');
     const cached = await store.getHistoricoByHash(conteudoHash);
     if (cached) {
-      return NextResponse.json(
-        {
-          resumoExecutivo: cached.resumo,
-          clausulaAplicavel: cached.clausula,
-          templateSugerido: cached.templateGerado,
-          cache: true,
-        },
-        { status: 200 }
-      );
+      // Cache-hit devolve o contrato COMPLETO: além das três chaves clássicas,
+      // recompõe prazoDefesa/dadosFormulario (sempre presentes em Procon v4+)
+      // e o formulário salvo — assim a reanálise reabre o CRM como se fresh.
+      const cacheResp: Record<string, unknown> = {
+        resumoExecutivo: cached.resumo,
+        clausulaAplicavel: cached.clausula,
+        templateSugerido: cached.templateGerado,
+        cache: true,
+        casoId: cached.id,
+      };
+      const snap = cached.dadosCrm;
+      if (snap?.prazoDefesa) cacheResp.prazoDefesa = snap.prazoDefesa;
+      if (snap?.dadosIA) cacheResp.dadosFormulario = snap.dadosIA;
+      if (snap) cacheResp.dadosCrm = snap;
+      return NextResponse.json(cacheResp, { status: 200 });
     }
     // ── T&C da Keeta carregados — base factual para a seção Análise ──
     const termos = termosParaHash;
@@ -443,6 +449,13 @@ ${conteudo.slice(0, 30000)}
     // Falha ao gravar NUNCA derruba a análise (best-effort).
     let casoId: number | null = null;
     try {
+      // O snapshot inicial nasce junto com o registro: dados da IA + prazo
+      // calculado. Assim o cache-hit e o Histórico reabrem o CRM completo,
+      // mesmo antes do primeiro "Salvar no histórico".
+      const snapshotInicial: CrmSnapshot = {
+        prazoDefesa: prazoDefesa ?? null,
+        dadosIA: dadosForm ?? undefined,
+      };
       const salvo = await store.saveHistorico({
         tipo: tipo as TipoAnalise,
         origem: req.headers.get('content-type')?.includes('multipart/form-data') ? 'pdf' : 'texto',
@@ -450,6 +463,7 @@ ${conteudo.slice(0, 30000)}
         clausula: clausulaAplicavel,
         templateGerado: templateFinal,
         conteudoHash,
+        dadosCrm: tipo === 'procon' ? snapshotInicial : null,
       });
       casoId = salvo.id;
     } catch (dbErr) {
@@ -467,6 +481,11 @@ ${conteudo.slice(0, 30000)}
     }
     if (dadosForm) resposta.dadosFormulario = dadosForm;
     if (casoId !== null) resposta.casoId = casoId;
+    if (tipo === 'procon')
+      resposta.dadosCrm = {
+        prazoDefesa: prazoDefesa ?? null,
+        dadosIA: dadosForm ?? undefined,
+      };
 
     return NextResponse.json(resposta);
   } catch (err) {
