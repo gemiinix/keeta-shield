@@ -21,16 +21,26 @@ export default function SubsidioFlow({
     setIsProcessing(true);
     setError(null);
     try {
-      const res = await fetch('/api/analyze-subsidio', {
+      const res = await fetch('/api/analisar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requisicao: requisicao.trim() }),
+        body: JSON.stringify({ tipo: 'subsidio', conteudo: requisicao.trim() }),
       });
-      if (!res.ok) throw new Error(`Falha na análise (${res.status})`);
-      const data = await res.json();
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? `Falha na análise (${res.status})`);
+      }
+      const data = (await res.json()) as {
+        resumoExecutivo: string;
+        clausulaAplicavel: string;
+        templateSugerido: string;
+      };
       onAnalysisComplete({
-        extracted: data.extracted ?? {},
-        templateText: data.templateText ?? '',
+        extracted: {
+          RESUMO_EXECUTIVO: data.resumoExecutivo,
+          CLAUSULA_APLICAVEL: data.clausulaAplicavel,
+        },
+        templateText: data.templateSugerido,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro inesperado na análise.');
