@@ -68,9 +68,11 @@ export default function MainDashboard({
   // ── Cronômetro do caso (TMO ao vivo) ──
   // De propriedade do MainDashboard: NÃO remonta ao alternar
   // formulário ↔ minuta, então o tempo total do caso nunca zera.
-  // Início = quando a análise retorna; congela no 1º salvamento.
+  // Acumulado: tempo salvo no caso (sessões anteriores) + sessão atual.
+  // Congela de vez quando o caso é Encerrado.
   const [inicioCaso, setInicioCaso] = useState<number | null>(null);
   const [tmoCongelado, setTmoCongelado] = useState<number | null>(null);
+  const [tmoAcumulado, setTmoAcumulado] = useState<number>(0);
   const [tmoAoVivo, setTmoAoVivo] = useState(0);
   // Minuta editada do caso em andamento — vive no MainDashboard para
   // sobreviver à alternância formulário ↔ minuta (o TemplateEditor é o
@@ -83,10 +85,10 @@ export default function MainDashboard({
   useEffect(() => {
     if (!tmoAtivo) return;
     const id = window.setInterval(() => {
-      setTmoAoVivo(Math.floor((Date.now() - (inicioCaso as number)) / 1000));
+      setTmoAoVivo(tmoAcumulado + Math.floor((Date.now() - (inicioCaso as number)) / 1000));
     }, 1000);
     return () => window.clearInterval(id);
-  }, [tmoAtivo, inicioCaso]);
+  }, [tmoAtivo, inicioCaso, tmoAcumulado]);
 
   /** Salva a minuta editada no caso do histórico — chamada pelo botão
    *  'Salvar minuta' do TemplateEditor. Atualiza apenas o campo minutaEditada
@@ -113,19 +115,50 @@ export default function MainDashboard({
   const tmoExibido =
     tmoCongelado != null
       ? tmoCongelado
-      : analysisResult?.crm?.snapshot?.tmoSegundos != null
-        ? (analysisResult.crm.snapshot.tmoSegundos as number)
-        : tmoAoVivo;
+      : tmoAoVivo || tmoAcumulado;
   const tmoBadge = `${String(Math.floor(tmoExibido / 60)).padStart(2, '0')}:${String(tmoExibido % 60).padStart(2, '0')}`;
+
+  /** Persiste o TMO acumulado (sessões somadas) no caso — chamado ao SAIR
+   *  do caso (nova análise / fechar / navegar). Best-effort com patch na rota:
+   *  nunca sobrescreve campos salvos por outro caminho. */
+  const persistirTmo = () => {
+    const id = analysisResult?.casoId;
+    if (!id) return;
+    const encerrado =
+      (analysisResult?.crm?.snapshot?.campos?.status ?? '')
+        .trim()
+        .toLowerCase() === 'encerrado';
+    if (encerrado || analysisResult?.crm == null) return;
+    const total =
+      tmoCongelado != null
+        ? tmoCongelado
+        : tmoAcumulado +
+          Math.max(0, Math.floor((Date.now() - (inicioCaso ?? Date.now())) / 1000));
+    void fetch('/api/historico', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id,
+        patch: { tmoSegundos: total, tmoRetomadoEm: null },
+      }),
+    }).catch(() => {
+      /* best-effort: falha ao persistir TMO não bloqueia a navegação */
+    });
+  };
 
   const abrirResultado = (r: AnalysisResult | null) => {
     setAnalysisResult(r);
     // Procon com dados de CRM → começa no formulário; Subsídio → direto no editor
     setPosAnalise(r?.crm ? 'crm' : 'editor');
-    // Reinicia o cronômetro: início = agora; TMO salvo do snapshot (reabertura)
-    // é exibido congelado em vez de contar de novo.
+    // Cronômetro acumulativo: início da SESSÃO = agora, sobre o TMO já
+    // salvo no caso — sair e voltar nunca zera; congela se Encerrado.
     setInicioCaso(Date.now());
-    setTmoCongelado(r?.crm?.snapshot?.tmoSegundos ?? null);
+    // TMO acumulado: tempo já salvo no caso (sessões anteriores) continua
+    // contando dali — sair para outra análise e voltar NUNCA zera o tempo.
+    const encerrado =
+      (r?.crm?.snapshot?.campos?.status ?? '').trim().toLowerCase() === 'encerrado';
+    setTmoCongelado(encerrado ? (r?.crm?.snapshot?.tmoSegundos ?? 0) : null);
+    setTmoAcumulado(encerrado ? 0 : (r?.crm?.snapshot?.tmoSegundos ?? 0));
     setTmoAoVivo(r?.crm?.snapshot?.tmoSegundos ?? 0);
     // Minuta salva no caso (se houver) — repõe o texto editado anteriormente.
     setMinutaEditada(r?.crm?.snapshot?.minutaEditada ?? null);
@@ -169,7 +202,10 @@ export default function MainDashboard({
                 </div>
               </div>
               <button
-                onClick={() => setAnalysisResult(null)}
+                onClick={() => {
+                  persistirTmo();
+                  setAnalysisResult(null);
+                }}
                 className="rounded-lg border border-line bg-white px-3 py-2 text-xs font-semibold text-ink/55 transition-colors duration-150 hover:bg-surface hover:text-ink"
               >
                 nova análise
@@ -183,6 +219,10 @@ export default function MainDashboard({
               inicioCaso={inicioCaso ?? undefined}
               onOpenTemplate={() => setPosAnalise('editor')}
               onTmoFrozen={setTmoCongelado}
+              onTmoAcumulado={(seg) => {
+                setTmoAcumulado(seg);
+                setTmoAoVivo(seg);
+              }}
               minutaEditada={minutaEditada}
               onMinutaChange={setMinutaEditada}
             />
@@ -193,7 +233,10 @@ export default function MainDashboard({
               extracted={analysisResult.extracted}
               templateText={minutaEditada ?? analysisResult.templateText}
               cronometro={tmoBadge}
-              onClose={() => setAnalysisResult(null)}
+              onClose={() => {
+                persistirTmo();
+                setAnalysisResult(null);
+              }}
               onBackToForm={() => setPosAnalise('crm')}
               onSaveMinuta={analysisResult.casoId ? salvarMinuta : undefined}
               onEditedChange={setMinutaEditada}

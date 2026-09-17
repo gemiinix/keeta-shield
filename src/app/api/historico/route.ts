@@ -15,13 +15,34 @@ export async function GET() {
 
 /**
  * PUT /api/historico — salva/atualiza o snapshot do Formulário de CRM
- * de um caso. Body: { id: number, snapshot: CrmSnapshot }.
+ * de um caso. Body: { id: number, snapshot: CrmSnapshot } (completo)
+ *                         | { id: number, patch: Partial<CrmSnapshot> } (parcial).
+ *
+ * O modo `patch` faz merge com o snapshot atual no banco — usado para
+ * persistir TMO acumulado ao sair do caso e a minuta editada, sem risco
+ * de sobrescrever campos salvos por outro caminho (formulário ↔ editor).
  */
 export async function PUT(req: Request) {
   try {
-    const body = (await req.json()) as { id?: number; snapshot?: CrmSnapshot };
+    const body = (await req.json()) as {
+      id?: number;
+      snapshot?: CrmSnapshot;
+      patch?: Partial<CrmSnapshot>;
+    };
     const id = Number(body.id);
-    if (!Number.isInteger(id) || id <= 0 || !body.snapshot || typeof body.snapshot !== 'object') {
+    if (!Number.isInteger(id) || id <= 0) {
+      return NextResponse.json({ error: 'Envie { id, snapshot } válidos.' }, { status: 400 });
+    }
+    if (body.patch) {
+      const atual = (await store.getCrmSnapshot(id)) ?? {};
+      await store.saveCrmSnapshot(id, {
+        ...atual,
+        ...body.patch,
+        atualizadoEm: new Date().toISOString(),
+      });
+      return NextResponse.json({ ok: true });
+    }
+    if (!body.snapshot || typeof body.snapshot !== 'object') {
       return NextResponse.json({ error: 'Envie { id, snapshot } válidos.' }, { status: 400 });
     }
     await store.saveCrmSnapshot(id, body.snapshot);

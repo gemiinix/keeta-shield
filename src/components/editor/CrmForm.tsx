@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { MOTIVOS_PROCON } from '@/constants/motivos';
 import { calculateKeetaBusinessDeadline, isoParaBR } from '@/lib/prazo';
 import type { CrmSnapshot } from '@/lib/types';
@@ -29,8 +29,10 @@ type Props = {
    *  MainDashboard (não remonta ao alternar formulário/minuta, então o
    *  cronômetro nunca zera ao voltar do editor). */
   inicioCaso?: number;
-  /** Congela o TMO no primeiro salvamento — notifica o dashboard. */
+  /** Congela o TMO quando o caso é Encerrado — notifica o dashboard. */
   onTmoFrozen?: (segundos: number) => void;
+  /** Sincroniza o acumulado de TMO do dashboard após cada salvamento. */
+  onTmoAcumulado?: (segundos: number) => void;
   /** Minuta editada no TemplateEditor — reposta no estado local ao voltar. */
   minutaEditada?: string | null;
   /** Notifica o dashboard de que a minuta foi alterada. */
@@ -92,7 +94,7 @@ function ActionButton({
   );
 }
 
-export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot: snapshotSalvo, casoId, inicioCaso, onTmoFrozen, minutaEditada, onMinutaChange }: Props) {
+export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot: snapshotSalvo, casoId, inicioCaso, onTmoFrozen, onTmoAcumulado, minutaEditada, onMinutaChange }: Props) {
   // ── Campos pré-preenchidos pela IA (editáveis; snapshot repõe os salvos) ──
   const saved = snapshotSalvo?.campos ?? {};
   const [salvando, setSalvando] = useState(false);
@@ -132,19 +134,26 @@ export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot
   const [compensacao, setCompensacao] = useState(saved.compensacao ?? '');
   const [comentarios, setComentarios] = useState(saved.comentarios ?? '');
 
-  // ── TMO: cronômetro do caso ──
-  // Inicia quando o formulário monta (a análise chegou) e congela no primeiro
-  // 'Salvar no histórico'. Reabrir um caso pelo Histórico não reconta: o TMO
-  // de um caso é o tempo até a primeira conclusão — registro único.
-  const inicioRef = useRef(Date.now());
-  // Âncora do TMO: usa o timestamp do dashboard quando disponível — assim
-  // alternar formulário ↔ minuta (remonte do CrmForm) NUNCA zera o cronômetro.
-  const inicioEfeito = inicioCaso ?? inicioRef.current;
-
-  // TMO congelado: já salvo (reabertura) ou gravado agora no primeiro save.
-  const [tmoCongelado, setTmoCongelado] = useState<number | null>(
-    () => snapshotSalvo?.tmoSegundos ?? null
+  // ── TMO: cronômetro ACUMULATIVO do caso ──
+  // Soma todas as sessões de trabalho (inclusive saindo para outra análise
+  // e voltando depois). Congela de vez apenas quando o caso é Encerrado.
+  const tmoSalvo = snapshotSalvo?.tmoSegundos ?? 0;
+  const casoEncerrado =
+    (snapshotSalvo?.campos?.status ?? '').trim().toLowerCase() === 'encerrado';
+  // Base acumulada + âncora da sessão atual (retomada do banco se houver,
+  // senão agora — primeira sessão do caso).
+  const retomadoEm = snapshotSalvo?.tmoRetomadoEm ?? Date.now();
+  // TMO congelado: caso encerrado (registro definitivo).
+  const [tmoCongelado, setTmoCongelado] = useState<number | null>(() =>
+    casoEncerrado ? tmoSalvo : null
   );
+  // TMO vivo = acumulado salvo + tempo da sessão atual.
+  const [tmoBase] = useState<number>(() => tmoSalvo);
+  // Âncora da sessão: prop do dashboard (não remonta ao alternar
+  // formulário ↔ minuta) — retoma da hora em que o caso foi (re)aberto.
+  const inicioEfeito = inicioCaso ?? retomadoEm;
+  const tmoVivoAgora =
+    tmoBase + Math.max(0, Math.floor((Date.now() - inicioEfeito) / 1000));
 
   // ── Prazo de processo administrativo: 10 dias úteis a partir de HOJE ──
   // Mesma regra utilitária do backend (prazo.ts) — cálculo no cliente.
@@ -210,12 +219,15 @@ export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot
         // Minuta editada no TemplateEditor — preservada no snapshot
         // (nunca se perde ao navegar/fechar/reabrir o caso).
         minutaEditada: minutaEditada ?? snapshotSalvo?.minutaEditada ?? null,
-        // TMO: congela no primeiro salvamento — salvamentos posteriores
-        // preservam o valor original (reabrir/atualizar não reconta).
+        // TMO acumulado: soma o tempo da sessão atual ao que já estava
+        // salvo. Congela de vez quando o caso é Encerrado — antes disso,
+        // cada salvamento apenas atualiza o acumulado (nunca zera).
         tmoSegundos:
           tmoCongelado != null
             ? tmoCongelado
-            : Math.max(0, Math.floor((Date.now() - inicioEfeito) / 1000)),
+            : tmoVivoAgora,
+        // Âncora da sessão atual — para retomar dali na próxima abertura.
+        tmoRetomadoEm: tmoCongelado != null ? null : inicioEfeito,
         atualizadoEm: new Date().toISOString(),
       };
       const tmoSalvo = snapshot.tmoSegundos;
@@ -234,9 +246,13 @@ export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot
           minute: '2-digit',
         })} — reabra este caso pelo Histórico quando quiser atualizar.`
       );
-      // Congela o cronômetro do dashboard no TMO definitivo deste caso.
+      // Sincroniza o acumulado do dashboard com o TMO recém-salvo.
+      // Só congela de vez se o caso acabou de ser Encerrado neste salvamento.
       if (tmoSalvo != null) {
-        setTmoCongelado(tmoSalvo);
+        onTmoAcumulado?.(tmoSalvo);
+        const encerrouAgora =
+          (status ?? '').trim().toLowerCase() === 'encerrado';
+        if (encerrouAgora) setTmoCongelado(tmoSalvo);
         onTmoFrozen?.(tmoSalvo);
       }
     } catch (err) {

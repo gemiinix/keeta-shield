@@ -40,7 +40,13 @@ export type CrmSnapshot = {
    *  primeiro 'Salvar no histórico' do caso. Registrado uma única vez. */
   /** Minuta editada no TemplateEditor — persistida junto ao caso. */
   minutaEditada?: string | null;
+  /** TMO — Tempo Médio de Operação ACUMULADO em segundos. Soma todas as
+   *  sessões de trabalho no caso (inclusive pausas de saída/reentrada),
+   *  e só congela de vez quando o caso é Encerrado (status 'Encerrado'). */
   tmoSegundos?: number | null;
+  /** Timestamp (ms) da ÚLTIMA retomada do caso — âncora da sessão atual.
+   *  Usado para somar o tempo da sessão ao acumulado ao sair/salvar. */
+  tmoRetomadoEm?: number | null;
   atualizadoEm?: string;
 };
 
