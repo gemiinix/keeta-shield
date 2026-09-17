@@ -143,12 +143,13 @@ export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot
   // Base acumulada + âncora da sessão atual (retomada do banco se houver,
   // senão agora — primeira sessão do caso).
   const retomadoEm = snapshotSalvo?.tmoRetomadoEm ?? Date.now();
-  // TMO congelado: caso encerrado (registro definitivo).
+  // TMO congelado: caso encerrado (registro definitivo). Salvamentos
+  // com status ≠ Encerrado NÃO congelam — o cronômetro segue contando
+  // (a sessão é reancorada pelo dashboard após cada salvamento).
   const [tmoCongelado, setTmoCongelado] = useState<number | null>(() =>
     casoEncerrado ? tmoSalvo : null
   );
-  // TMO vivo = acumulado salvo + tempo da sessão atual.
-  const [tmoBase] = useState<number>(() => tmoSalvo);
+  const [tmoBase, setTmoBase] = useState<number>(() => tmoSalvo);
   // Âncora da sessão: prop do dashboard (não remonta ao alternar
   // formulário ↔ minuta) — retoma da hora em que o caso foi (re)aberto.
   const inicioEfeito = inicioCaso ?? retomadoEm;
@@ -246,14 +247,23 @@ export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot
           minute: '2-digit',
         })} — reabra este caso pelo Histórico quando quiser atualizar.`
       );
-      // Sincroniza o acumulado do dashboard com o TMO recém-salvo.
-      // Só congela de vez se o caso acabou de ser Encerrado neste salvamento.
+      // Sincroniza o acumulado do dashboard com o TMO recém-salvo e
+      // reancora a sessão a partir de AGORA — sem isso, o cronômetro
+      // continuaria contando a partir do início antigo e o próximo
+      // salvamento contaria o mesmo tempo DUAS VEZES (double-count).
       if (tmoSalvo != null) {
-        onTmoAcumulado?.(tmoSalvo);
         const encerrouAgora =
           (status ?? '').trim().toLowerCase() === 'encerrado';
-        if (encerrouAgora) setTmoCongelado(tmoSalvo);
-        onTmoFrozen?.(tmoSalvo);
+        if (encerrouAgora) {
+          setTmoCongelado(tmoSalvo);
+        } else {
+          // Reancora a sessão: base = acumulado recém-salvo, relógio
+          // recomeça de AGORA — evita double-count da sessão no próximo save.
+          setTmoBase(tmoSalvo);
+          onTmoAcumulado?.(tmoSalvo);
+        }
+        // Congela SOMENTE quando o caso acabou de ser Encerrado.
+        if (encerrouAgora) onTmoFrozen?.(tmoSalvo);
       }
     } catch (err) {
       setMsgSalvo(err instanceof Error ? err.message : 'Erro inesperado ao salvar.');

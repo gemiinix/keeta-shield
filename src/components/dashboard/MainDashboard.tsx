@@ -222,6 +222,9 @@ export default function MainDashboard({
               onTmoAcumulado={(seg) => {
                 setTmoAcumulado(seg);
                 setTmoAoVivo(seg);
+                // Reancora a sessão a partir de agora — senão o próximo
+                // salvamento contaria o mesmo intervalo duas vezes.
+                setInicioCaso(Date.now());
               }}
               minutaEditada={minutaEditada}
               onMinutaChange={setMinutaEditada}
