@@ -72,6 +72,11 @@ export default function MainDashboard({
   const [inicioCaso, setInicioCaso] = useState<number | null>(null);
   const [tmoCongelado, setTmoCongelado] = useState<number | null>(null);
   const [tmoAoVivo, setTmoAoVivo] = useState(0);
+  // Minuta editada do caso em andamento — vive no MainDashboard para
+  // sobreviver à alternância formulário ↔ minuta (o TemplateEditor é o
+  // mesmo componente, então o estado intern dele já persiste; esta cópia
+  // serve de prop estável para reaberturas e salvamento junto ao caso).
+  const [minutaEditada, setMinutaEditada] = useState<string | null>(null);
   const tmoAtivo =
     analysisResult?.crm != null && tmoCongelado == null && inicioCaso != null;
 
@@ -82,6 +87,28 @@ export default function MainDashboard({
     }, 1000);
     return () => window.clearInterval(id);
   }, [tmoAtivo, inicioCaso]);
+
+  /** Salva a minuta editada no caso do histórico — chamada pelo botão
+   *  'Salvar minuta' do TemplateEditor. Atualiza apenas o campo minutaEditada
+   *  do snapshot, preservando todo o resto (campos do CRM, TMO etc.). */
+  const salvarMinuta = async (texto: string) => {
+    const id = analysisResult?.casoId;
+    if (!id) return;
+    const res = await fetch('/api/historico', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id,
+        snapshot: {
+          ...(analysisResult?.crm?.snapshot ?? {}),
+          minutaEditada: texto,
+          atualizadoEm: new Date().toISOString(),
+        },
+      }),
+    });
+    setMinutaEditada(texto);
+    if (!res.ok) throw new Error('Falha ao salvar minuta.');
+  };
 
   const tmoExibido =
     tmoCongelado != null
@@ -100,6 +127,8 @@ export default function MainDashboard({
     setInicioCaso(Date.now());
     setTmoCongelado(r?.crm?.snapshot?.tmoSegundos ?? null);
     setTmoAoVivo(r?.crm?.snapshot?.tmoSegundos ?? 0);
+    // Minuta salva no caso (se houver) — repõe o texto editado anteriormente.
+    setMinutaEditada(r?.crm?.snapshot?.minutaEditada ?? null);
   };
 
   // Fluxo de processamento concluído → exibe o CRM (Procon) ou TemplateEditor,
@@ -154,16 +183,20 @@ export default function MainDashboard({
               inicioCaso={inicioCaso ?? undefined}
               onOpenTemplate={() => setPosAnalise('editor')}
               onTmoFrozen={setTmoCongelado}
+              minutaEditada={minutaEditada}
+              onMinutaChange={setMinutaEditada}
             />
             </div>
             </div>
             <div className={posAnalise === 'editor' ? 'contents' : 'hidden'}>
             <TemplateEditor
               extracted={analysisResult.extracted}
-              templateText={analysisResult.templateText}
+              templateText={minutaEditada ?? analysisResult.templateText}
               cronometro={tmoBadge}
               onClose={() => setAnalysisResult(null)}
               onBackToForm={() => setPosAnalise('crm')}
+              onSaveMinuta={analysisResult.casoId ? salvarMinuta : undefined}
+              onEditedChange={setMinutaEditada}
             />
             </div>
           </>

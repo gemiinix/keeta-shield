@@ -31,6 +31,10 @@ type Props = {
   inicioCaso?: number;
   /** Congela o TMO no primeiro salvamento — notifica o dashboard. */
   onTmoFrozen?: (segundos: number) => void;
+  /** Minuta editada no TemplateEditor — reposta no estado local ao voltar. */
+  minutaEditada?: string | null;
+  /** Notifica o dashboard de que a minuta foi alterada. */
+  onMinutaChange?: (texto: string) => void;
 };
 
 const SIM_NAO = ['Sim', 'Não'] as const;
@@ -88,7 +92,7 @@ function ActionButton({
   );
 }
 
-export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot: snapshotSalvo, casoId, inicioCaso, onTmoFrozen }: Props) {
+export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot: snapshotSalvo, casoId, inicioCaso, onTmoFrozen, minutaEditada, onMinutaChange }: Props) {
   // ── Campos pré-preenchidos pela IA (editáveis; snapshot repõe os salvos) ──
   const saved = snapshotSalvo?.campos ?? {};
   const [salvando, setSalvando] = useState(false);
@@ -203,6 +207,9 @@ export default function CrmForm({ dadosIA, prazoDefesa, onOpenTemplate, snapshot
           compensacao,
           comentarios,
         },
+        // Minuta editada no TemplateEditor — preservada no snapshot
+        // (nunca se perde ao navegar/fechar/reabrir o caso).
+        minutaEditada: minutaEditada ?? snapshotSalvo?.minutaEditada ?? null,
         // TMO: congela no primeiro salvamento — salvamentos posteriores
         // preservam o valor original (reabrir/atualizar não reconta).
         tmoSegundos:

@@ -74,6 +74,8 @@ export default function TemplateEditor({
   onClose,
   onBackToForm,
   cronometro,
+  onSaveMinuta,
+  onEditedChange,
 }: {
   extracted: Record<string, string>;
   templateText?: string;
@@ -83,8 +85,35 @@ export default function TemplateEditor({
   /** Badge do cronômetro do caso (MM:SS), de propriedade do MainDashboard —
    *  mantém o TMO visível enquanto o usuário redige a minuta. */
   cronometro?: string;
+  /** Salva a minuta editada no caso do histórico (dados_crm). */
+  onSaveMinuta?: (texto: string) => Promise<void>;
+  /** Notifica o pai a cada edição — mantém a cópia viva no MainDashboard. */
+  onEditedChange?: (texto: string) => void;
 }) {
   const [edited, setEdited] = useState(templateText || PLACEHOLDER_TEMPLATE);
+  const [salvandoMinuta, setSalvandoMinuta] = useState(false);
+  const [msgMinuta, setMsgMinuta] = useState<string | null>(null);
+
+  /** Salva a minuta editada junto ao caso (snapshot dados_crm) — assim o
+   *  texto nunca se perde ao navegar entre telas, fechar ou reabrir o caso. */
+  const salvarMinuta = async () => {
+    if (!onSaveMinuta || salvandoMinuta) return;
+    setSalvandoMinuta(true);
+    setMsgMinuta(null);
+    try {
+      await onSaveMinuta(edited);
+      setMsgMinuta(
+        `Minuta salva às ${new Date().toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit',
+        })} — reabra este caso quando quiser continuar.`
+      );
+    } catch {
+      setMsgMinuta('Falha ao salvar a minuta — tente novamente.');
+    } finally {
+      setSalvandoMinuta(false);
+    }
+  };
 
   // Prazo de defesa: chaves especiais viram BANNER no topo — não campos.
   const prazoText = extracted[PRAZO_BADGE_KEY];
@@ -140,6 +169,16 @@ export default function TemplateEditor({
             >
               <ArrowLeftIcon className="h-4 w-4" />
               Voltar ao formulário
+            </button>
+          )}
+          {onSaveMinuta && (
+            <button
+              onClick={salvarMinuta}
+              disabled={salvandoMinuta}
+              title="Salva a minuta junto ao caso — o texto não se perde ao sair"
+              className="inline-flex items-center gap-2 rounded-lg bg-keeta-teal px-4 py-2 text-sm font-bold text-white transition-colors duration-150 hover:bg-keeta-teal-dark disabled:opacity-50"
+            >
+              {salvandoMinuta ? 'Salvando…' : 'Salvar minuta'}
             </button>
           )}
           <button
@@ -208,6 +247,9 @@ export default function TemplateEditor({
             <h3 className="font-display text-xs font-bold uppercase tracking-wider text-ink/60">
               Minuta
             </h3>
+            {msgMinuta && (
+              <span className="text-xs font-semibold text-keeta-teal-dark">{msgMinuta}</span>
+            )}
             <button
               onClick={() => setEdited(PLACEHOLDER_TEMPLATE)}
               className="text-xs font-semibold text-ink/50 transition-colors duration-150 hover:text-keeta-teal-dark"
@@ -217,7 +259,10 @@ export default function TemplateEditor({
           </div>
           <textarea
             value={edited}
-            onChange={(e) => setEdited(e.target.value)}
+            onChange={(e) => {
+              setEdited(e.target.value);
+              onEditedChange?.(e.target.value);
+            }}
             aria-label="Minuta editável"
             spellCheck={false}
             className="mt-3 h-2/5 w-full resize-none rounded-lg border border-line bg-white p-4 font-mono text-sm leading-relaxed text-ink focus:border-ink/40 focus:outline-none"

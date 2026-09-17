@@ -38,6 +38,8 @@ export type CrmSnapshot = {
   campos?: Record<string, string>;
   /** TMO — Tempo Médio de Operação: segundos entre a análise chegar e o
    *  primeiro 'Salvar no histórico' do caso. Registrado uma única vez. */
+  /** Minuta editada no TemplateEditor — persistida junto ao caso. */
+  minutaEditada?: string | null;
   tmoSegundos?: number | null;
   atualizadoEm?: string;
 };
