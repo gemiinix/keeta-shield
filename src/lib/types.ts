@@ -40,6 +40,10 @@ export type CrmSnapshot = {
    *  primeiro 'Salvar no histórico' do caso. Registrado uma única vez. */
   /** Minuta editada no TemplateEditor — persistida junto ao caso. */
   minutaEditada?: string | null;
+  /** Minuta sugerida pela IA no fluxo Subsídio — gerada do cruzamento entre
+   *  a solicitação do advogado e o documento do processo anexado. Persistida
+   *  junto ao caso para que cache-hit e Histório a repõem no editor. */
+  minutaSugerida?: string | null;
   /** TMO — Tempo Médio de Operação ACUMULADO em segundos. Soma todas as
    *  sessões de trabalho no caso (inclusive pausas de saída/reentrada),
    *  e só congela de vez quando o caso é Encerrado (status 'Encerrado'). */

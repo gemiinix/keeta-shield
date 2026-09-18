@@ -308,7 +308,7 @@ export default function MainDashboard({
                   {
                     key: 'subsidio',
                     label: 'Fluxo 02 — Subsídio',
-                    hint: 'Ofício colado como texto',
+                    hint: 'Solicitação + PDF do processo',
                   },
                 ] as const
               ).map(({ key, label, hint }) => {
@@ -358,7 +358,7 @@ export default function MainDashboard({
                     <span>
                       {activeTab === 'procon'
                         ? 'PDFs com nome iniciando em atendimento_cip_'
-                        : 'Texto integral do ofício colado no campo'}
+                        : 'Texto da solicitação e/ou PDF do processo judicial'}
                     </span>
                   </li>
                   <li className="flex gap-2.5">
@@ -369,7 +369,7 @@ export default function MainDashboard({
                     <span>
                       {activeTab === 'procon'
                         ? 'Múltiplos arquivos são combinados em uma única análise'
-                        : 'Mínimo de 20 caracteres para iniciar a análise'}
+                        : 'Mínimo de 20 caracteres no texto OU anexo em PDF — a IA cruza as duas fontes quando ambas existem'}
                     </span>
                   </li>
                   <li className="flex gap-2.5">
