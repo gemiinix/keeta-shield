@@ -20,7 +20,7 @@ const MODEL_CHAIN = ['gemini-3.6-flash', 'gemini-flash-latest'] as const;
 
 /** Versão do prompt de análise — incrementar a cada mudança de comportamento
  *  da IA invalida o cache de análises antigas (o hash inclui este valor). */
-const PROMPT_VERSION = 'v5';
+const PROMPT_VERSION = 'v4';
 
 /** Dados estruturados extraídos pela IA para o formulário de CRM (Procon). */
 type DadosFormulario = {
@@ -81,19 +81,12 @@ async function generateWithRetry(
  * POST /api/analisar
  *
  * Corpo: JSON { tipo: 'procon' | 'subsidio', conteudo: string }
- *         — ou multipart/form-data:
- *           • Procon:   { tipo, arquivos: File[] } (PDFs atendimento_cip_*)
- *           • Subsídio: { tipo, conteudo: texto manual, file: PDF do processo }
- *             (texto e/ou PDF — o backend cruza as duas fontes quando ambas
- *              existem; nenhuma é obrigatoriamente exclusiva)
+ *         — ou multipart/form-data { tipo, arquivos: File[] } (PDFs atendimento_cip_*)
  *
  * Devolve JSON estruturado com:
- *   - resumoExecutivo: síntese factual da manifestação/conteúdo
- *   - clausulaAplicavel: cláusula dos T&C aplicável (Procon) ou checklist
- *     acionável (Subsídio)
+ *   - resumoExecutivo: síntese factual da manifestação do consumidor
+ *   - clausulaAplicavel: cláusula dos T&C aplicável ao caso (CDC)
  *   - templateSugerido: minuta de resposta com variáveis {{VARIAVEL}}
- *   - minutaSugerida (Subsídio): minuta de resposta completa baseada no
- *     cruzamento entre a solicitação do advogado e o documento do processo
  *
  * Modelo: gemini-3.6-flash (@google/genai oficial), com retry em picos de demanda.
  * Requer GEMINI_API_KEY nas variáveis de ambiente.
@@ -108,28 +101,13 @@ export async function POST(req: NextRequest) {
 
     let tipo: string | null = null;
     let conteudo = '';
-    let origem: 'pdf' | 'texto' = 'texto';
 
     if (contentType.includes('multipart/form-data')) {
-      // FormData unificado — Procon (PDFs atendimento_cip_*) OU Subsídio
-      // (texto manual + PDF do processo judicial; qualquer um ou ambos).
-      // A presença de arquivo NÃO significa mais "caso Procon": o campo
-      // 'tipo' é quem decide o fluxo.
+      // Fluxo Procon: PDFs enviados via FormData
       const formData = await req.formData();
-      const tipoBruto = String(formData.get('tipo') ?? '');
-      tipo = tipoBruto === 'procon' || tipoBruto === 'subsidio' ? tipoBruto : null;
+      tipo = formData.get('tipo') === 'procon' ? 'procon' : null;
+      const files = formData.getAll('arquivos') as File[];
 
-      // ── Extração unificada: arquivo(s) se houver + texto manual se houver ──
-      // Aceita tanto 'arquivos' (Procon, múltiplo) quanto 'file' (Subsídio,
-      // singular) — o fluxo é decidido pelo 'tipo', não pelo nome do campo.
-      const files = [
-        ...(formData.getAll('arquivos') as File[]),
-        ...(formData.getAll('file') as File[]),
-      ].filter((f): f is File => f instanceof File && f.size > 0);
-      const textoManual = String(formData.get('conteudo') ?? '').trim();
-
-      if (tipo === 'procon') {
-      // Validações exclusivas do fluxo Procon (nomenclatura obrigatória)
       if (files.length === 0) {
         return NextResponse.json(
           { error: 'Nenhum arquivo recebido.' },
@@ -146,7 +124,6 @@ export async function POST(req: NextRequest) {
           { status: 422 }
         );
       }
-      } // fim das validações Procon
 
       // Extrai o texto de cada PDF no servidor
       // (polyfill de canvas ANTES do pdf-parse: pdfjs precisa de
@@ -164,28 +141,9 @@ export async function POST(req: NextRequest) {
           await parser.destroy();
         }
       }
-      const textoDoPdf = textos.join('\n\n').trim();
-
-      if (tipo === 'subsidio') {
-        // Subsídio: cruzamento das duas fontes (texto manual + PDF do
-        // processo). Nenhuma é obrigatória — mas pelo menos uma deve existir.
-        if (!textoManual && !textoDoPdf) {
-          return NextResponse.json(
-            { error: 'Envie o texto da solicitação e/ou o PDF do processo judicial.' },
-            { status: 400 }
-          );
-        }
-        conteudo = `--- SOLICITAÇÃO DO ADVOGADO / TIME JURÍDICO ---\n${
-          textoManual || 'Não informado'
-        }\n\n--- DOCUMENTO DO PROCESSO ANEXO ---\n${textoDoPdf || 'Sem anexo'}`;
-        origem = textoDoPdf ? 'pdf' : 'texto';
-      } else {
-        // Procon: conteúdo é o texto extraído dos PDFs de atendimento
-        conteudo = textoDoPdf;
-        origem = 'pdf';
-      }
+      conteudo = textos.join('\n\n').trim();
     } else {
-      // Fluxo texto puro (JSON) — Subsídio textual ou Procon colado
+      // Fluxo Subsídio: JSON com texto puro
       const body = (await req.json()) as { tipo?: string; conteudo?: string };
       tipo = body.tipo === 'procon' || body.tipo === 'subsidio' ? body.tipo : null;
       conteudo = body.conteudo?.trim() ?? '';
@@ -197,11 +155,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    // Subsídio multipart sempre passa pelo mínimo (os marcadores de seção
-    // garantem comprimento); a exigência real de conteúdo foi validada acima,
-    // por fonte. JSON puro e Procon continuam com o mínimo de 20 caracteres.
-    const minimoConteudo = tipo === 'subsidio' && origem === 'pdf' ? 0 : 20;
-    if (conteudo.length < minimoConteudo) {
+    if (conteudo.length < 20) {
       return NextResponse.json(
         { error: 'Conteúdo ausente ou muito curto para análise (mín. 20 caracteres).' },
         { status: 400 }
@@ -239,9 +193,6 @@ export async function POST(req: NextRequest) {
         resumoExecutivo: cached.resumo,
         clausulaAplicavel: cached.clausula,
         templateSugerido: cached.templateGerado,
-        // minutaSugerida persistida junto ao caso (snapshot) — o cache-hit
-        // devolve o contrato completo também para o fluxo Subsídio.
-        minutaSugerida: cached.dadosCrm?.minutaSugerida ?? cached.templateGerado,
         cache: true,
         casoId: cached.id,
       };
@@ -290,8 +241,7 @@ export async function POST(req: NextRequest) {
 {
   "resumoExecutivo": "...",
   "clausulaAplicavel": "...",
-  "templateSugerido": "...",
-  "minutaSugerida": "Write a comprehensive draft response (minuta) based on the facts found in the lawsuit document that directly answers the lawyer's request."
+  "templateSugerido": "..."
 }`;
 
     const PROCON_REGRAS = `### Regras do campo dataAbertura:
@@ -365,13 +315,10 @@ Instruções:
 
 3. IDENTIFIJE PRAZOS E AÇÕES CRÍTICAS: procure datas, pedidos legais específicos (liminares, reativações) e pessoas envolvidas.
 
-4. CONTEXT CROSS-REFERENCING: You will receive two inputs: a direct request from a lawyer (SOLICITAÇÃO) and the raw lawsuit document (DOCUMENTO DO PROCESSO). You must read BOTH. Use the 'SOLICITAÇÃO' to understand exactly what the legal team needs you to extract or answer. Use the 'DOCUMENTO DO PROCESSO' to find the factual context, dates, and values to build a highly accurate, case-specific summary and action checklist. When only one input is present (the other shows 'Não informado' or 'Sem anexo'), work with what you have and note the absence explicitly.
-
 Foco de cada campo:
 - "resumoExecutivo": as informações da entidade-alvo — nome, identificador e status desejado — mais uma síntese do que é pedido, em 2-4 frases.
 - "clausulaAplicavel": o CHECKLIST acionável — lista numerada de TODOS os dados a extrair, prazos/liminares identificados e ações necessárias. Justificação por T&Cs/LGPD fica em UMA única frase breve ao final (não é o foco).
 - "templateSugerido": minuta de resposta jurídica/subsídio, seguindo EXATAMENTE o padrão abaixo.
-- "minutaSugerida": minuta COMPLETA de resposta ao ofício — redigida em português jurídico formal, respondendo ponto a ponto o que o advogado solicitou na SOLICITAÇÃO, com os fatos, datas, identificadores e valores encontrados no DOCUMENTO DO PROCESSO. Onde um dado não estiver disponível nos autos, use {{VARIAVEL}}. Estrutura sugerida: endereçamento ao juízo/advogado, qualificação do processo, resposta item a item, conclusão e data/assinatura.
 
 ${CONTRATO_JSON}
 
@@ -405,9 +352,7 @@ ${REGRAS_SAIDA}`;
     const userPrompt = `TIPO DE MANIFESTAÇÃO: ${
       tipo === 'procon'
         ? 'Reclamação Procon (manifestação fiscalizada, com prazo legal de resposta)'
-        : tipo === 'subsidio' && origem === 'pdf'
-          ? 'Requisição de Subsídio (solicitação do advogado + documento do processo — as duas fontes vêm marcadas abaixo)'
-          : 'Requisição de Subsídio (ofício judicial ou extrajudicial)'
+        : 'Requisição de Subsídio (ofício judicial ou extrajudicial)'
     }
 
 CONTEÚDO DA MANIFESTAÇÃO:
@@ -428,12 +373,11 @@ ${conteudo.slice(0, 30000)}
       parsed = JSON.parse(match[0]);
     }
 
-    const { resumoExecutivo, clausulaAplicavel, templateSugerido, minutaSugerida, dataAbertura, dadosFormulario } =
+    const { resumoExecutivo, clausulaAplicavel, templateSugerido, dataAbertura, dadosFormulario } =
       parsed as {
         resumoExecutivo?: string;
         clausulaAplicavel?: string;
         templateSugerido?: string;
-        minutaSugerida?: string;
         dataAbertura?: string;
         dadosFormulario?: {
           cipProcon?: string;
@@ -507,22 +451,19 @@ ${conteudo.slice(0, 30000)}
     try {
       // O snapshot inicial nasce junto com o registro: dados da IA + prazo
       // calculado. Assim o cache-hit e o Histórico reabrem o CRM completo,
-      // mesmo antes do primeiro "Salvar no histórico". No Subsídio, a
-      // minutaSugerida (cruzamento solicitação × documento) vai junto —
-      // cache-hit e Histório a repõem no editor.
+      // mesmo antes do primeiro "Salvar no histórico".
       const snapshotInicial: CrmSnapshot = {
         prazoDefesa: prazoDefesa ?? null,
         dadosIA: dadosForm ?? undefined,
-        minutaSugerida: tipo === 'subsidio' ? (minutaSugerida ?? null) : undefined,
       };
       const salvo = await store.saveHistorico({
         tipo: tipo as TipoAnalise,
-        origem,
+        origem: req.headers.get('content-type')?.includes('multipart/form-data') ? 'pdf' : 'texto',
         resumo: resumoExecutivo,
         clausula: clausulaAplicavel,
         templateGerado: templateFinal,
         conteudoHash,
-        dadosCrm: snapshotInicial,
+        dadosCrm: tipo === 'procon' ? snapshotInicial : null,
       });
       casoId = salvo.id;
     } catch (dbErr) {
@@ -534,24 +475,17 @@ ${conteudo.slice(0, 30000)}
       clausulaAplicavel,
       templateSugerido: templateFinal,
     };
-    // minutaSugerida — exclusiva do fluxo Subsídio (cruzamento solicitação ×
-    // documento). Tolerante à ausência: o templateSugerido segue como base.
-    if (tipo === 'subsidio' && minutaSugerida) {
-      resposta.minutaSugerida = minutaSugerida;
-    }
     if (prazoDefesa) {
       resposta.dataAbertura = dataAbertura;
       resposta.prazoDefesa = prazoDefesa;
     }
     if (dadosForm) resposta.dadosFormulario = dadosForm;
     if (casoId !== null) resposta.casoId = casoId;
-    // dadosCrm: sempre presente — Procon (prazo + dados IA) e Subsídio
-    // (minutaSugerida persistida) reabrem completos no cache/histórico.
-    resposta.dadosCrm = {
-      prazoDefesa: prazoDefesa ?? null,
-      dadosIA: dadosForm ?? undefined,
-      minutaSugerida: tipo === 'subsidio' ? (minutaSugerida ?? null) : undefined,
-    };
+    if (tipo === 'procon')
+      resposta.dadosCrm = {
+        prazoDefesa: prazoDefesa ?? null,
+        dadosIA: dadosForm ?? undefined,
+      };
 
     return NextResponse.json(resposta);
   } catch (err) {
