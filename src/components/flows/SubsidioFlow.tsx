@@ -5,6 +5,10 @@ import { DocumentArrowUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 const MIN_CHARS = 20;
 const ACCEPTED_MIME = 'application/pdf';
+// Limite da Vercel (Hobby): 4,5 MB por requisição — o 413 acontece ANTES
+// de chegar na rota, então a validação tem de ser no cliente mesmo.
+const MAX_PDF_MB = 4;
+const MAX_PDF_BYTES = MAX_PDF_MB * 1024 * 1024;
 
 export default function SubsidioFlow({
   onAnalysisComplete,
@@ -26,12 +30,21 @@ export default function SubsidioFlow({
   // o backend cruza as duas fontes quando ambas existem.
   const canSubmit = charCount >= MIN_CHARS || arquivo !== null;
 
-  /** Valida que o arquivo é um PDF (por MIME ou extensão). */
+  /** Valida que o arquivo é um PDF (por MIME ou extensão) e que cabe no
+   *  limite de upload da Vercel — evita o 413 que a plataforma devolve
+   *  silenciosamente sem chegar ao backend. */
   const validarArquivo = (f: File | null | undefined): File | null => {
     if (!f) return null;
     const isPdf = f.type === ACCEPTED_MIME || f.name.toLowerCase().endsWith('.pdf');
     if (!isPdf) {
       setError('Formato inválido — anexe apenas PDF do processo judicial.');
+      return null;
+    }
+    if (f.size > MAX_PDF_BYTES) {
+      setError(
+        `PDF muito grande (${(f.size / 1024 / 1024).toFixed(1)} MB) — o limite de envio é ${MAX_PDF_MB} MB. ` +
+          'Reduza o arquivo: salve/imprima em PDF novamente com qualidade menor, ou separe só as páginas essenciais do processo.'
+      );
       return null;
     }
     return f;
@@ -150,7 +163,7 @@ export default function SubsidioFlow({
               <p className="mt-0.5 text-xs text-ink/55">
                 {arquivo
                   ? 'A IA vai cruzar a solicitação acima com este documento'
-                  : 'Opcional — arraste aqui ou clique para selecionar'}
+                  : `Opcional — arraste aqui ou clique para selecionar (máx. ${MAX_PDF_MB} MB)`}
               </p>
             </div>
           </div>
