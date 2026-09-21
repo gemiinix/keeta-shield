@@ -91,8 +91,14 @@ export default function MainDashboard({
   }, [tmoAtivo, inicioCaso, tmoAcumulado]);
 
   /** Salva a minuta editada no caso do histórico — chamada pelo botão
-   *  'Salvar minuta' do TemplateEditor. Atualiza apenas o campo minutaEditada
-   *  do snapshot, preservando todo o resto (campos do CRM, TMO etc.). */
+   *  'Salvar minuta' do TemplateEditor. Usa o modo PATCH da rota
+   *  (/api/historico), que faz MERGE com o snapshot atual no banco —
+   *  atualiza apenas `minutaEditada` e NUNCA sobrescreve o resto do
+   *  snapshot (dadosIA/dadosFormulario, prazoDefesa, campos do CRM, TMO)
+   *  que possa ter sido salvo por outro caminho (formulário, TMO, etc.).
+   *  Antes usava snapshot completo construído do estado em memória —
+   *  que podia estar desatualizado/parcial — e APAGAVA o dadosFormulario
+   *  do caso (formulário reabria em branco pelo Histórico). */
   const salvarMinuta = async (texto: string) => {
     const id = analysisResult?.casoId;
     if (!id) return;
@@ -101,14 +107,23 @@ export default function MainDashboard({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id,
-        snapshot: {
-          ...(analysisResult?.crm?.snapshot ?? {}),
-          minutaEditada: texto,
-          atualizadoEm: new Date().toISOString(),
-        },
+        patch: { minutaEditada: texto, atualizadoEm: new Date().toISOString() },
       }),
     });
     setMinutaEditada(texto);
+    // Sincroniza o snapshot em memória — evita que um salvamento posterior
+    // do formulário (snapshot completo) reverta a minuta recém-salva.
+    setAnalysisResult((prev) =>
+      prev && prev.crm
+        ? {
+            ...prev,
+            crm: {
+              ...prev.crm,
+              snapshot: { ...(prev.crm.snapshot ?? {}), minutaEditada: texto },
+            },
+          }
+        : prev
+    );
     if (!res.ok) throw new Error('Falha ao salvar minuta.');
   };
 

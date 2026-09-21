@@ -45,7 +45,24 @@ export async function PUT(req: Request) {
     if (!body.snapshot || typeof body.snapshot !== 'object') {
       return NextResponse.json({ error: 'Envie { id, snapshot } válidos.' }, { status: 400 });
     }
-    await store.saveCrmSnapshot(id, body.snapshot);
+    // ── Defesa contra perda de dados do formulário (dadosFormulario) ──
+    // Um snapshot "completo" construído de estado em memória pode estar
+    // desatualizado/parcial (ex.: sem dadosIA/prazoDefesa/campos). Nesses
+    // casos preservamos o que já está salvo no banco — o snapshot recebido
+    // só pode APAGAR os campos que ele próprio carrega explicitamente.
+    // Isso garante que o formulário (dadosFormulario) nunca seja zerado
+    // por um caminho de salvamento que não o conheça.
+    const atual = (await store.getCrmSnapshot(id)) ?? {};
+    const snapshotFinal: CrmSnapshot = {
+      ...body.snapshot,
+      dadosIA: body.snapshot.dadosIA ?? atual.dadosIA,
+      prazoDefesa:
+        body.snapshot.prazoDefesa !== undefined
+          ? body.snapshot.prazoDefesa
+          : atual.prazoDefesa,
+      campos: body.snapshot.campos ?? atual.campos,
+    };
+    await store.saveCrmSnapshot(id, snapshotFinal);
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('[historico:putCrm]', err);
