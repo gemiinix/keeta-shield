@@ -522,9 +522,24 @@ function ExpandableRow({
               <div>
                 <h4 className="font-display text-[10px] font-bold uppercase tracking-wider text-keeta-teal-dark">
                   Peça gerada
+                  {e.dadosCrm?.minutaEditada != null &&
+                    e.dadosCrm.minutaEditada.trim() !== e.templateGerado.trim() && (
+                      <span
+                        className="ml-2 rounded bg-keeta-teal/15 px-1.5 py-0.5 align-middle text-[9px] font-bold uppercase tracking-wide text-keeta-teal-dark"
+                        title="Minuta editada salva neste caso — versão exibida abaixo já reflete as edições"
+                      >
+                        minuta editada
+                      </span>
+                    )}
                 </h4>
                 <p className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-ink/70">
-                  {interpolate(e.templateGerado, {})}
+                  {interpolate(
+                    (e.dadosCrm?.minutaEditada != null &&
+                      e.dadosCrm.minutaEditada.trim() !== '')
+                      ? e.dadosCrm.minutaEditada
+                      : e.templateGerado,
+                    {}
+                  )}
                 </p>
               </div>
             </div>
